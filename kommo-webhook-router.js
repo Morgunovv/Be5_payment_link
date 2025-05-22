@@ -7,6 +7,17 @@ function createKommoWebhookRouter(options = {}) {
 
     // Middleware для обработки разных форматов данных
     router.use((req, res, next) => {
+        // Сохраняем сырые данные запроса
+        req.rawBody = req.body;
+
+        // Проверяем подпись вебхука
+        if (req.headers['x-signature']) {
+            const isValid = this.verifySignature(req.rawBody, req.headers['x-signature']);
+            if (!isValid) {
+                return res.status(403).json({ error: 'Invalid signature' });
+            }
+        }
+
         // Парсим тело запроса в зависимости от content-type
         try {
             if (req.headers['content-type'] === 'application/x-www-form-urlencoded') {
@@ -14,6 +25,8 @@ function createKommoWebhookRouter(options = {}) {
                 req.body = qs.parse(req.body.toString());
             } else if (req.headers['content-type'] === 'application/json') {
                 req.body = typeof req.body === 'object' ? req.body : JSON.parse(req.body);
+            } else {
+                console.warn('Unexpected content-type:', req.headers['content-type']);
             }
 
             console.log('Received Kommo webhook:', {
@@ -34,7 +47,8 @@ function createKommoWebhookRouter(options = {}) {
         try {
             const result = await handler.processWebhook({
                 headers: req.headers,
-                body: req.body
+                body: req.body,
+                rawBody: req.rawBody
             });
 
             if (result.success) {

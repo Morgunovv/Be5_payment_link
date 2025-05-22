@@ -22,6 +22,22 @@ class KommoWebhookHandler {
         console.log('\n==== KOMMO WEBHOOK PROCESSING STARTED ====');
         const timestamp = new Date().toISOString();
         console.log(`Processing started at: ${timestamp}`);
+        console.log('=== RAW WEBHOOK DATA ===');
+        console.log('Headers:', JSON.stringify(webhookData.headers, null, 2));
+        console.log('Raw Body:', webhookData.rawBody || 'Empty');
+
+        // Если тело пришло в формате form-urlencoded, парсим его
+        if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')
+            && typeof webhookData.rawBody === 'string') {
+            const parsed = {};
+            webhookData.rawBody.split('&').forEach(pair => {
+                const [key, value] = pair.split('=');
+                parsed[key] = decodeURIComponent(value);
+            });
+            webhookData.body = parsed;
+        }
+
+        console.log('Parsed Body:', JSON.stringify(webhookData.body, null, 2));
 
         const saveTimestamp = timestamp.replace(/:/g, '-');
         const webhookFile = path.join(this.webhooksDir, `kommo-${saveTimestamp}.json`);
@@ -32,35 +48,37 @@ class KommoWebhookHandler {
                 timestamp,
                 headers: webhookData.headers,
                 body: webhookData.body,
+                rawBody: webhookData.rawBody, // Add raw body for debugging
                 receivedAt: new Date().toISOString()
             };
 
             fs.writeFileSync(webhookFile, JSON.stringify(fullWebhookData, null, 2));
-            console.log(`Webhook data saved to: ${webhookFile}`);
+            console.log('=== WEBHOOK SAVED ===');
+            console.log(`File: ${path.basename(webhookFile)}`);
+            console.log(`Path: ${webhookFile}`);
+            console.log('=====================');
 
             // Extract lead ID from different webhook formats
             console.log('Extracting lead ID from webhook data...');
+            console.log('Full webhook body:', JSON.stringify(webhookData.body, null, 2));
+            console.log('Raw webhook body:', webhookData.rawBody);
+
             const leadId = this.extractLeadId(webhookData.body);
             console.log(`Extracted lead ID: ${leadId || 'Not found'}`);
 
             if (!leadId) {
-                console.warn('No lead ID found in webhook data. Creating payment link with minimal data.');
+                console.warn('No lead ID found in webhook data. Creating fallback payment link');
+                console.log('Webhook body:', JSON.stringify(webhookData.body, null, 2));
+                console.log('Raw webhook body:', webhookData.rawBody);
+
                 const paymentResult = await this.paymentService.createPaymentLink({
                     amount: 0,
                     description: 'Payment for unknown deal',
                     callback_url: `${process.env.BASE_URL}/payment-callback`
                 });
 
-                // Try to add note even without lead ID
-                try {
-                    const noteText = `⚠️ Payment Link Created (No Lead ID)\n\n` +
-                        `Payment URL: ${paymentResult.checkout_url}\n\n` +
-                        `Click to pay: ${paymentResult.checkout_url}`;
-                    await this.kommoApi.createNote(leadId || '0', noteText);
-                    console.log('Payment link note added');
-                } catch (noteError) {
-                    console.error('Failed to add payment link note:', noteError.message);
-                }
+                console.log('Fallback payment link created:', paymentResult.checkout_url);
+                console.log('Note: Cannot add Kommo note without lead ID');
 
                 return {
                     success: true,
@@ -122,16 +140,20 @@ class KommoWebhookHandler {
                 });
 
                 // Try to add note about error
-                try {
-                    const noteText = `⚠️ Payment Link (Error)\n\n` +
-                        `Error: ${error.message}\n` +
-                        `Payment URL: ${paymentResult.checkout_url}\n\n` +
-                        `Click to pay: ${paymentResult.checkout_url}`;
+                if (leadId) { // Only add error note if we have a valid lead ID
+                    try {
+                        const noteText = `⚠️ Payment Link (Error)\n\n` +
+                            `Error: ${error.message}\n` +
+                            `Payment URL: ${paymentResult.checkout_url}\n\n` +
+                            `Click to pay: ${paymentResult.checkout_url}`;
 
-                    await this.kommoApi.createNote(leadId || '0', noteText);
-                    console.log('Error note added');
-                } catch (noteError) {
-                    console.error('Failed to add error note:', noteError.message);
+                        await this.kommoApi.createNote(leadId, noteText);
+                        console.log('Error note added');
+                    } catch (noteError) {
+                        console.error('Failed to add error note:', noteError.message);
+                    }
+                } else {
+                    console.log('Skipping error note - no valid lead ID');
                 }
 
                 return {
@@ -154,10 +176,31 @@ class KommoWebhookHandler {
     }
 
     extractLeadId(webhookBody) {
-        // Try different possible paths for lead ID
-        return webhookBody?.leads?.add?.[0]?.id ||
-            webhookBody?._embedded?.leads?.[0]?.id ||
-            this.findLeadIdInObject(webhookBody?.leads);
+        // Основные форматы вебхуков Kommo
+        if (webhookBody?.leads?.add?.[0]?.id) {
+            return webhookBody.leads.add[0].id;
+        }
+        if (webhookBody?.leads?.status?.[0]?.id) {
+            return webhookBody.leads.status[0].id;
+        }
+        if (webhookBody?._embedded?.leads?.[0]?.id) {
+            return webhookBody._embedded.leads[0].id;
+        }
+
+        // Обработка некорректного формата form-urlencoded
+        if (typeof webhookBody === 'string' && webhookBody.includes('leads[add][0][id]=')) {
+            const match = webhookBody.match(/leads\[add\]\[0\]\[id\]=(\d+)/);
+            if (match && match[1]) {
+                return parseInt(match[1]);
+            }
+        }
+
+        // Дополнительные проверки
+        const leadId = this.findLeadIdInObject(webhookBody?.leads);
+        if (leadId) return leadId;
+
+        console.error('Lead ID not found in webhook:', JSON.stringify(webhookBody, null, 2));
+        return null;
     }
 
     findLeadIdInObject(leadsObj) {
@@ -201,6 +244,13 @@ class KommoWebhookHandler {
             contacts,
             companies
         };
+    }
+
+    verifySignature(rawBody, signature) {
+        // TODO: Implement proper signature verification
+        // For now just log and return true
+        console.log('Webhook signature verification:', signature);
+        return true;
     }
 
     async getRelatedEntities(entities, entityType, headers) {
