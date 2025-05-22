@@ -1,14 +1,16 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const KommoAPI = require('./kommo-api');
 
 class KommoWebhookHandler {
     constructor(options = {}) {
         this.token = options.token || process.env.KOMMO_API_TOKEN;
         this.subdomain = options.subdomain || process.env.KOMMO_SUBDOMAIN;
         this.webhooksDir = options.webhooksDir || path.join(__dirname, 'webhooks');
-        // Initialize payment service with proper require
+        // Initialize services
         this.paymentService = options.paymentService || new (require('./tbc-payment-service'))();
+        this.kommoApi = options.kommoApi || new KommoAPI(this.token, this.subdomain);
 
         // Создаем директорию для вебхуков если не существует
         if (!fs.existsSync(this.webhooksDir)) {
@@ -49,6 +51,17 @@ class KommoWebhookHandler {
                     callback_url: `${process.env.BASE_URL}/payment-callback`
                 });
 
+                // Try to add note even without lead ID
+                try {
+                    const noteText = `⚠️ Payment Link Created (No Lead ID)\n\n` +
+                        `Payment URL: ${paymentResult.checkout_url}\n\n` +
+                        `Click to pay: ${paymentResult.checkout_url}`;
+                    await this.kommoApi.createNote(leadId || '0', noteText);
+                    console.log('Payment link note added');
+                } catch (noteError) {
+                    console.error('Failed to add payment link note:', noteError.message);
+                }
+
                 return {
                     success: true,
                     leadId: null,
@@ -74,6 +87,19 @@ class KommoWebhookHandler {
                 callback_url: `${process.env.BASE_URL}/payment-callback`
             });
 
+            // Add payment link note to the lead
+            try {
+                const noteText = `✅ Payment Link Created\n\n` +
+                    `Amount: ${paymentAmount} GEL\n` +
+                    `Payment URL: ${paymentResult.checkout_url}\n\n` +
+                    `Click to pay: ${paymentResult.checkout_url}`;
+
+                await this.kommoApi.createNote(leadId, noteText);
+                console.log('Payment link note added to the lead');
+            } catch (noteError) {
+                console.error('Failed to add payment link note:', noteError.message);
+            }
+
             console.log('Payment link created successfully');
             console.log('==== KOMMO WEBHOOK PROCESSING COMPLETED ====\n');
 
@@ -94,6 +120,19 @@ class KommoWebhookHandler {
                     description: 'Payment for deal (error occurred)',
                     callback_url: `${process.env.BASE_URL}/payment-callback`
                 });
+
+                // Try to add note about error
+                try {
+                    const noteText = `⚠️ Payment Link (Error)\n\n` +
+                        `Error: ${error.message}\n` +
+                        `Payment URL: ${paymentResult.checkout_url}\n\n` +
+                        `Click to pay: ${paymentResult.checkout_url}`;
+
+                    await this.kommoApi.createNote(leadId || '0', noteText);
+                    console.log('Error note added');
+                } catch (noteError) {
+                    console.error('Failed to add error note:', noteError.message);
+                }
 
                 return {
                     success: false,

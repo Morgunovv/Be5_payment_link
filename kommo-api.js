@@ -78,6 +78,51 @@ class KommoAPI {
             throw error;
         }
     }
+
+    /**
+     * Create a note for a lead
+     * @param {string} leadId - ID of the lead
+     * @param {string} text - Note text
+     * @returns {Promise<Object>} - Note creation result
+     */
+    async createNote(leadId, text) {
+        try {
+            const requestData = {
+                add: {
+                    entity_id: parseInt(leadId, 10),
+                    entity_type: 'leads',
+                    note_type: 'common',
+                    params: {
+                        text: text
+                    }
+                }
+            };
+
+            const response = await axios.post(
+                `${this.baseUrl}/leads/notes`,
+                requestData,
+                { headers: this.getHeaders() }
+            );
+
+            const noteId = response.data._embedded?.notes?.[0]?.id;
+            if (!noteId) {
+                throw new Error('Failed to get note ID from response');
+            }
+
+            return {
+                success: true,
+                noteId: noteId,
+                response: response.data
+            };
+        } catch (error) {
+            console.error(`Error creating note for lead ${leadId}:`, error.message);
+            if (error.response) {
+                console.error('Response status:', error.response.status);
+                console.error('Response data:', error.response.data);
+            }
+            throw error;
+        }
+    }
 }
 
 module.exports = KommoAPI;
