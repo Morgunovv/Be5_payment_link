@@ -7,7 +7,8 @@ class KommoWebhookHandler {
         this.token = options.token || process.env.KOMMO_API_TOKEN;
         this.subdomain = options.subdomain || process.env.KOMMO_SUBDOMAIN;
         this.webhooksDir = options.webhooksDir || path.join(__dirname, 'webhooks');
-        this.paymentService = options.paymentService || require('./tbc-payment-service');
+        // Initialize payment service with proper require
+        this.paymentService = options.paymentService || new (require('./tbc-payment-service'))();
 
         // Создаем директорию для вебхуков если не существует
         if (!fs.existsSync(this.webhooksDir)) {
