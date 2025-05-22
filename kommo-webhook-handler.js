@@ -27,14 +27,37 @@ class KommoWebhookHandler {
         console.log('Raw Body:', webhookData.rawBody || 'Empty');
 
         // Если тело пришло в формате form-urlencoded, парсим его
-        if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')
-            && typeof webhookData.rawBody === 'string') {
-            const parsed = {};
-            webhookData.rawBody.split('&').forEach(pair => {
-                const [key, value] = pair.split('=');
-                parsed[key] = decodeURIComponent(value);
-            });
-            webhookData.body = parsed;
+        if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')) {
+            console.log('Parsing form-urlencoded body');
+
+            if (typeof webhookData.rawBody === 'string') {
+                try {
+                    const parsed = {};
+                    const params = new URLSearchParams(webhookData.rawBody);
+
+                    // Логируем все параметры для диагностики
+                    console.log('Raw URL params:', Array.from(params.entries()));
+
+                    for (const [key, value] of params.entries()) {
+                        parsed[key] = value;
+                        // Специальная обработка для [object Object]
+                        if (key.includes('[object Object]')) {
+                            try {
+                                const jsonValue = JSON.parse(value);
+                                Object.assign(parsed, jsonValue);
+                            } catch (e) {
+                                console.log('Failed to parse [object Object] value');
+                            }
+                        }
+                    }
+                    webhookData.body = parsed;
+                } catch (e) {
+                    console.error('Error parsing form-urlencoded:', e);
+                    webhookData.body = { error: 'Failed to parse form data' };
+                }
+            } else {
+                console.log('rawBody is not a string:', typeof webhookData.rawBody);
+            }
         }
 
         console.log('Parsed Body:', JSON.stringify(webhookData.body, null, 2));
