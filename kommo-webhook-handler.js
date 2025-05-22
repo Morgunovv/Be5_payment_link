@@ -176,6 +176,16 @@ class KommoWebhookHandler {
     }
 
     extractLeadId(webhookBody) {
+        // Сначала проверим, если это строка "[object Object]" - попробуем распарсить
+        if (typeof webhookBody === 'string' && webhookBody.includes('[object Object]')) {
+            try {
+                const parsed = JSON.parse(webhookBody);
+                if (parsed?.leads) webhookBody = parsed;
+            } catch (e) {
+                console.log('Failed to parse "[object Object]" string');
+            }
+        }
+
         // Основные форматы вебхуков Kommo
         if (webhookBody?.leads?.add?.[0]?.id) {
             return webhookBody.leads.add[0].id;
@@ -202,6 +212,10 @@ class KommoWebhookHandler {
 
             // Вариант 3: leads_add_0_id (альтернативный формат)
             leadId = params.get('leads_add_0_id');
+            if (leadId) return parseInt(leadId);
+
+            // Вариант 4: leads[status][0][id]
+            leadId = params.get('leads[status][0][id]');
             if (leadId) return parseInt(leadId);
         }
 
