@@ -16,32 +16,65 @@ class KommoWebhookHandler {
     }
 
     async processWebhook(webhookData) {
+        console.log('\n==== KOMMO WEBHOOK PROCESSING STARTED ====');
         const timestamp = new Date().toISOString();
+        console.log(`Processing started at: ${timestamp}`);
+
         const saveTimestamp = timestamp.replace(/:/g, '-');
         const webhookFile = path.join(this.webhooksDir, `kommo-${saveTimestamp}.json`);
 
         try {
-            // Save raw webhook data
-            fs.writeFileSync(webhookFile, JSON.stringify(webhookData, null, 2));
+            // Save raw webhook data with additional metadata
+            const fullWebhookData = {
+                timestamp,
+                headers: webhookData.headers,
+                body: webhookData.body,
+                receivedAt: new Date().toISOString()
+            };
+
+            fs.writeFileSync(webhookFile, JSON.stringify(fullWebhookData, null, 2));
+            console.log(`Webhook data saved to: ${webhookFile}`);
 
             // Extract lead ID from different webhook formats
+            console.log('Extracting lead ID from webhook data...');
             const leadId = this.extractLeadId(webhookData.body);
+            console.log(`Extracted lead ID: ${leadId || 'Not found'}`);
 
             if (!leadId) {
-                throw new Error('No lead ID found in webhook data');
+                console.warn('No lead ID found in webhook data. Creating payment link with minimal data.');
+                const paymentResult = await this.paymentService.createPaymentLink({
+                    amount: 0,
+                    description: 'Payment for unknown deal',
+                    callback_url: `${process.env.BASE_URL}/payment-callback`
+                });
+
+                return {
+                    success: true,
+                    leadId: null,
+                    paymentUrl: paymentResult.checkout_url,
+                    webhookFile,
+                    message: 'Payment link created without lead ID'
+                };
             }
 
             // Get deal data from Kommo API
+            console.log(`Fetching deal data for lead ID: ${leadId}`);
             const dealData = await this.getDealData(leadId);
+            console.log('Deal data fetched successfully');
 
             // Create payment link
             const paymentAmount = dealData.lead.price || 0;
             const paymentDescription = `Payment for deal #${leadId}`;
+            console.log(`Creating payment link for amount: ${paymentAmount}`);
+
             const paymentResult = await this.paymentService.createPaymentLink({
                 amount: paymentAmount,
                 description: paymentDescription,
                 callback_url: `${process.env.BASE_URL}/payment-callback`
             });
+
+            console.log('Payment link created successfully');
+            console.log('==== KOMMO WEBHOOK PROCESSING COMPLETED ====\n');
 
             return {
                 success: true,
@@ -52,11 +85,31 @@ class KommoWebhookHandler {
             };
         } catch (error) {
             console.error('Webhook processing error:', error);
-            return {
-                success: false,
-                error: error.message,
-                webhookFile
-            };
+
+            // Even in case of error, try to create a basic payment link
+            try {
+                const paymentResult = await this.paymentService.createPaymentLink({
+                    amount: 0,
+                    description: 'Payment for deal (error occurred)',
+                    callback_url: `${process.env.BASE_URL}/payment-callback`
+                });
+
+                return {
+                    success: false,
+                    error: error.message,
+                    paymentUrl: paymentResult.checkout_url,
+                    webhookFile,
+                    message: 'Error occurred but basic payment link was created'
+                };
+            } catch (paymentError) {
+                console.error('Failed to create fallback payment link:', paymentError);
+                return {
+                    success: false,
+                    error: error.message,
+                    webhookFile,
+                    paymentError: paymentError.message
+                };
+            }
         }
     }
 

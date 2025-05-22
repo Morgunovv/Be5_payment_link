@@ -7,18 +7,25 @@ function createKommoWebhookRouter(options = {}) {
 
     // Middleware для обработки разных форматов данных
     router.use((req, res, next) => {
-        // Парсим x-www-form-urlencoded в JSON если нужно
-        if (req.headers['content-type'] === 'application/x-www-form-urlencoded') {
-            const qs = require('querystring');
-            req.body = qs.parse(req.body.toString());
-        }
+        // Парсим тело запроса в зависимости от content-type
+        try {
+            if (req.headers['content-type'] === 'application/x-www-form-urlencoded') {
+                const qs = require('querystring');
+                req.body = qs.parse(req.body.toString());
+            } else if (req.headers['content-type'] === 'application/json') {
+                req.body = typeof req.body === 'object' ? req.body : JSON.parse(req.body);
+            }
 
-        console.log('Received Kommo webhook:', {
-            method: req.method,
-            path: req.path,
-            headers: req.headers,
-            body: req.body
-        });
+            console.log('Received Kommo webhook:', {
+                method: req.method,
+                path: req.path,
+                headers: req.headers,
+                body: req.body
+            });
+        } catch (error) {
+            console.error('Error parsing webhook body:', error);
+            req.body = {};
+        }
         next();
     });
 
