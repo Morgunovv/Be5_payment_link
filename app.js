@@ -186,6 +186,27 @@ app.post('/callback', async (req, res) => {
     }
 });
 
+// Route to handle payment callback from TBC payment links
+app.post('/payment-callback', async (req, res) => {
+    try {
+        const callbackData = req.body;
+        console.log('Received payment callback:', callbackData);
+
+        // Verify callback signature if needed
+        // Process payment status update
+        // Example: update database with payment status
+
+        res.status(200).json({ status: 'Callback processed' });
+    } catch (error) {
+        console.error('Callback processing error:', {
+            message: error.message,
+            data: req.body,
+            stack: error.stack
+        });
+        res.status(500).json({ error: 'Callback processing failed' });
+    }
+});
+
 // Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

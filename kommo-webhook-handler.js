@@ -7,13 +7,8 @@ class KommoWebhookHandler {
         this.token = options.token || process.env.KOMMO_API_TOKEN;
         this.subdomain = options.subdomain || process.env.KOMMO_SUBDOMAIN;
         this.webhooksDir = options.webhooksDir || path.join(__dirname, 'webhooks');
+        this.paymentService = options.paymentService || require('./tbc-payment-service');
         this.initWebhooksDir();
-    }
-
-    initWebhooksDir() {
-        if (!fs.existsSync(this.webhooksDir)) {
-            fs.mkdirSync(this.webhooksDir, { recursive: true });
-        }
     }
 
     async processWebhook(webhookData) {
@@ -35,10 +30,20 @@ class KommoWebhookHandler {
             // Get deal data from Kommo API
             const dealData = await this.getDealData(leadId);
 
+            // Create payment link
+            const paymentAmount = dealData.lead.price || 0;
+            const paymentDescription = `Payment for deal #${leadId}`;
+            const paymentResult = await this.paymentService.createPaymentLink({
+                amount: paymentAmount,
+                description: paymentDescription,
+                callback_url: `${process.env.BASE_URL}/payment-callback`
+            });
+
             return {
                 success: true,
                 leadId,
                 dealData,
+                paymentUrl: paymentResult.checkout_url,
                 webhookFile
             };
         } catch (error) {

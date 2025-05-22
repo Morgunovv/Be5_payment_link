@@ -126,6 +126,27 @@ class TbcPaymentService {
     generatePaymentLink(paymentId) {
         return `https://pay.flitt.com/pay/${paymentId}`;
     }
+
+    async createPaymentLink(params) {
+        const paymentData = {
+            request: {
+                amount: params.amount,
+                currency: 'GEL',
+                merchant_id: this.merchantId,
+                order_desc: params.description,
+                order_id: `deal_${Date.now()}`,
+                response_url: params.callback_url,
+                server_callback_url: params.callback_url,
+                version: '1.0'
+            }
+        };
+
+        const result = await this.createPayment(paymentData);
+        return {
+            checkout_url: result.response.checkout_url,
+            payment_id: result.response.payment_id
+        };
+    }
 }
 
 module.exports = TbcPaymentService;

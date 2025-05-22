@@ -5,8 +5,14 @@ function createKommoWebhookRouter(options = {}) {
     const router = express.Router();
     const handler = new KommoWebhookHandler(options);
 
-    // Middleware для логирования входящих запросов
+    // Middleware для обработки разных форматов данных
     router.use((req, res, next) => {
+        // Парсим x-www-form-urlencoded в JSON если нужно
+        if (req.headers['content-type'] === 'application/x-www-form-urlencoded') {
+            const qs = require('querystring');
+            req.body = qs.parse(req.body.toString());
+        }
+
         console.log('Received Kommo webhook:', {
             method: req.method,
             path: req.path,
@@ -29,6 +35,7 @@ function createKommoWebhookRouter(options = {}) {
                     status: 'success',
                     message: 'Webhook processed successfully',
                     leadId: result.leadId,
+                    paymentUrl: result.paymentUrl,
                     webhookFile: result.webhookFile
                 });
             } else {
