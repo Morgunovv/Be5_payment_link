@@ -188,11 +188,21 @@ class KommoWebhookHandler {
         }
 
         // Обработка некорректного формата form-urlencoded
-        if (typeof webhookBody === 'string' && webhookBody.includes('leads[add][0][id]=')) {
-            const match = webhookBody.match(/leads\[add\]\[0\]\[id\]=(\d+)/);
-            if (match && match[1]) {
-                return parseInt(match[1]);
-            }
+        if (typeof webhookBody === 'string') {
+            // Попробуем разные варианты парсинга URL-encoded данных
+            const params = new URLSearchParams(webhookBody);
+
+            // Вариант 1: leads[add][0][id]
+            let leadId = params.get('leads[add][0][id]');
+            if (leadId) return parseInt(leadId);
+
+            // Вариант 2: leads%5Badd%5D%5B0%5D%5Bid%5D (URL-encoded)
+            leadId = params.get('leads%5Badd%5D%5B0%5D%5Bid%5D');
+            if (leadId) return parseInt(leadId);
+
+            // Вариант 3: leads_add_0_id (альтернативный формат)
+            leadId = params.get('leads_add_0_id');
+            if (leadId) return parseInt(leadId);
         }
 
         // Дополнительные проверки
