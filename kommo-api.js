@@ -90,35 +90,21 @@ class KommoAPI {
      */
     async updateLeadCustomField(leadId, fieldId, value) {
         try {
-            // Сначала получаем текущие данные сделки
-            const leadData = await this.getLead(leadId);
-
-            // Подготавливаем данные для обновления
-            const requestData = {
-                id: parseInt(leadId, 10),
-                custom_fields_values: leadData.custom_fields_values || []
-            };
-
-            // Находим или создаем поле для обновления
-            let field = requestData.custom_fields_values.find(f => f.field_id === fieldId);
-            if (!field) {
-                field = {
-                    field_id: fieldId,
-                    values: []
-                };
-                requestData.custom_fields_values.push(field);
-            }
-
-            // Обновляем значение поля
-            field.values = [{ value: value }];
-
             const response = await axios.patch(
-                `${this.baseUrl}/leads`,
-                { update: [requestData] },
-                { headers: this.getHeaders() }
+                `${this.baseUrl}/leads/custom_fields/${fieldId}`,
+                {
+                    entity_type: 'leads',
+                    id: parseInt(leadId, 10),
+                    values: [{ value: value }]
+                },
+                {
+                    headers: {
+                        ...this.getHeaders(),
+                        'Accept': 'application/hal+json'
+                    }
+                }
             );
-
-            return response.data._embedded?.leads?.[0];
+            return response.data;
         } catch (error) {
             console.error(`Error updating field ${fieldId} for lead ${leadId}:`, error.message);
             if (error.response) {
