@@ -118,12 +118,17 @@ class KommoWebhookHandler {
                 }
             }
 
-            // Создаем платежную ссылку
-            const paymentResult = await this.paymentService.createPaymentLink({
+            // Создаем платежную ссылку с полным логированием
+            const paymentRequest = {
                 amount: totalAmount,
                 description: `Payment for ${companyName} (deal #${leadId})`,
-                callback_url: `${process.env.BASE_URL}/payment-callback`
-            });
+                callback_url: `${process.env.BASE_URL}/payment-callback`,
+                order_id: `deal_${leadId}` // Используем реальный ID сделки вместо timestamp
+            };
+
+            console.log('Creating payment link with request:', JSON.stringify(paymentRequest, null, 2));
+            const paymentResult = await this.paymentService.createPaymentLink(paymentRequest);
+            console.log('Payment API response:', JSON.stringify(paymentResult, null, 2));
 
             // Добавляем заметку в Kommo
             if (this.token && this.subdomain) {
