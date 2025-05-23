@@ -31,33 +31,45 @@ class KommoWebhookHandler {
             if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')) {
                 console.log('Parsing form-urlencoded body');
 
-                if (typeof webhookData.rawBody === 'string') {
-                    try {
-                        const parsed = {};
-                        const params = new URLSearchParams(webhookData.rawBody);
+                try {
+                    let rawBodyStr;
+                    if (typeof webhookData.rawBody === 'string') {
+                        rawBodyStr = webhookData.rawBody;
+                    } else if (Buffer.isBuffer(webhookData.rawBody)) {
+                        rawBodyStr = webhookData.rawBody.toString('utf8');
+                    } else if (typeof webhookData.rawBody === 'object') {
+                        // Попробуем преобразовать объект в строку
+                        rawBodyStr = Object.entries(webhookData.rawBody)
+                            .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+                            .join('&');
+                    } else {
+                        rawBodyStr = String(webhookData.rawBody);
+                    }
 
-                        // Логируем все параметры для диагностики
-                        console.log('Raw URL params:', Array.from(params.entries()));
+                    console.log('Raw body string:', rawBodyStr);
 
-                        for (const [key, value] of params.entries()) {
-                            parsed[key] = value;
-                            // Специальная обработка для [object Object]
-                            if (key.includes('[object Object]')) {
-                                try {
-                                    const jsonValue = JSON.parse(value);
-                                    Object.assign(parsed, jsonValue);
-                                } catch (e) {
-                                    console.log('Failed to parse [object Object] value');
-                                }
+                    const parsed = {};
+                    const params = new URLSearchParams(rawBodyStr);
+
+                    // Логируем все параметры для диагностики
+                    console.log('Parsed URL params:', Array.from(params.entries()));
+
+                    for (const [key, value] of params.entries()) {
+                        parsed[key] = value;
+                        // Специальная обработка для [object Object]
+                        if (key.includes('[object Object]')) {
+                            try {
+                                const jsonValue = JSON.parse(value);
+                                Object.assign(parsed, jsonValue);
+                            } catch (e) {
+                                console.log('Failed to parse [object Object] value');
                             }
                         }
-                        webhookData.body = parsed;
-                    } catch (e) {
-                        console.error('Error parsing form-urlencoded:', e);
-                        webhookData.body = { error: 'Failed to parse form data' };
                     }
-                } else {
-                    console.log('rawBody is not a string:', typeof webhookData.rawBody);
+                    webhookData.body = parsed;
+                } catch (e) {
+                    console.error('Error parsing form-urlencoded:', e);
+                    webhookData.body = { error: 'Failed to parse form data' };
                 }
             }
 
