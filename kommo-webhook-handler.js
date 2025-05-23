@@ -81,6 +81,19 @@ class KommoWebhookHandler {
     }
 
     extractLeadId(webhookBody) {
+        // Если тело пришло в формате form-urlencoded, парсим его
+        if (typeof webhookBody === 'string') {
+            try {
+                const params = new URLSearchParams(webhookBody);
+                webhookBody = {};
+                for (const [key, value] of params.entries()) {
+                    webhookBody[key] = value;
+                }
+            } catch (e) {
+                console.error('Error parsing URL encoded data:', e);
+            }
+        }
+
         // Основные форматы вебхуков Kommo
         if (webhookBody?.leads?.add?.[0]?.id) {
             return webhookBody.leads.add[0].id;
@@ -92,18 +105,22 @@ class KommoWebhookHandler {
             return webhookBody._embedded.leads[0].id;
         }
 
-        // Обработка некорректного формата form-urlencoded
-        if (typeof webhookBody === 'string') {
-            try {
-                const params = new URLSearchParams(webhookBody);
-                let leadId = params.get('leads[add][0][id]') ||
-                    params.get('leads%5Badd%5D%5B0%5D%5Bid%5D') ||
-                    params.get('leads_add_0_id');
-                if (leadId) return parseInt(leadId);
-            } catch (e) {
-                console.error('Error parsing URL encoded data:', e);
+        // Проверяем все возможные варианты структуры leads
+        if (webhookBody?.leads) {
+            const leadsObj = webhookBody.leads;
+            for (const key in leadsObj) {
+                if (Array.isArray(leadsObj[key]) && leadsObj[key].length > 0 && leadsObj[key][0].id) {
+                    return leadsObj[key][0].id;
+                }
             }
         }
+
+        // Проверяем альтернативные форматы
+        const leadId = webhookBody?.lead_id ||
+            webhookBody?.id ||
+            webhookBody?.lead?.id;
+
+        if (leadId) return parseInt(leadId);
 
         return null;
     }
