@@ -140,13 +140,29 @@ class KommoWebhookHandler {
                     // Создаем заметку
                     await this.kommoApi.createNote(leadId, noteText);
 
-                    // Обновляем поле сделки с payment_id
-                    await this.kommoApi.updateLeadCustomField(
-                        leadId,
-                        980416,
-                        paymentResult.payment_id.toString()
-                    );
-                    console.log(`Saved payment_id ${paymentResult.payment_id} to deal ${leadId} field 980416`);
+                    // Обновляем поле сделки с payment_id (добавляем retry логику)
+                    try {
+                        await this.kommoApi.updateLeadCustomField(
+                            leadId,
+                            980416,
+                            paymentResult.payment_id.toString()
+                        );
+                        console.log(`Saved payment_id ${paymentResult.payment_id} to deal ${leadId} field 980416`);
+                    } catch (fieldError) {
+                        console.error('Failed to update custom field:', fieldError);
+                        // Retry after 5 seconds
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        try {
+                            await this.kommoApi.updateLeadCustomField(
+                                leadId,
+                                980416,
+                                paymentResult.payment_id.toString()
+                            );
+                            console.log('Successfully updated field on retry');
+                        } catch (retryError) {
+                            console.error('Failed to update field on retry:', retryError);
+                        }
+                    }
                 } catch (error) {
                     console.error('Failed to update deal:', error);
                 }
