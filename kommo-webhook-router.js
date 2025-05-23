@@ -60,4 +60,6 @@ function createKommoWebhookRouter(options = {}) {
     return router;
 }
 
-module.exports = createKommoWebhookRouter;
+module.exports = {
+    createKommoWebhookRouter
+};
