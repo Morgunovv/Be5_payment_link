@@ -15,7 +15,7 @@ console.log('Environment Variables:', {
 });
 const PORT = process.env.PORT || 3000;
 
-// Improved JSON parsing with error handling
+// Middleware for parsing JSON and form data
 app.use(express.json({
     verify: (req, res, buf) => {
         try {
@@ -23,6 +23,15 @@ app.use(express.json({
         } catch (e) {
             throw new Error('Invalid JSON');
         }
+    }
+}));
+
+// Add form-urlencoded parsing with extended options
+app.use(express.urlencoded({
+    extended: true,
+    limit: '10mb',
+    verify: (req, res, buf) => {
+        req.rawBody = buf.toString();
     }
 }));
 

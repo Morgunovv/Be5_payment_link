@@ -24,6 +24,10 @@ class KommoWebhookHandler {
 
         try {
             // Если тело пришло в формате form-urlencoded, парсим его
+            console.log('Raw headers:', webhookData.headers);
+            console.log('Raw body type:', typeof webhookData.rawBody);
+            console.log('Raw body first 500 chars:', String(webhookData.rawBody).substring(0, 500));
+
             if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')) {
                 console.log('Parsing form-urlencoded body');
 
