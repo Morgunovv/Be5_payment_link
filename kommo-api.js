@@ -111,8 +111,8 @@ class KommoAPI {
                 requestData.update[0].custom_fields_values.push(field);
             }
 
-            // Обновляем значение поля
-            field.values = [{ value: value }];
+            // Обновляем значение поля (конвертируем в число для цифрового поля)
+            field.values = [{ value: Number(value) }];
 
             console.log('Updating custom field:', {
                 url: `${this.baseUrl}/leads`,
