@@ -1,4 +1,6 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const KommoWebhookHandler = require('./kommo-webhook-handler');
 
 function createKommoWebhookRouter(options = {}) {
@@ -58,27 +60,4 @@ function createKommoWebhookRouter(options = {}) {
     return router;
 }
 
-            } else {
-    res.status(400).json({
-        status: 'error',
-        message: 'Failed to process webhook',
-        error: result.error,
-        webhookFile: result.webhookFile
-    });
-}
-        } catch (error) {
-    console.error('Unexpected error:', error);
-    res.status(500).json({
-        status: 'error',
-        message: 'Internal server error',
-        error: error.message
-    });
-}
-    });
-
-return router;
-}
-
-module.exports = {
-    createKommoWebhookRouter
-};
+module.exports = createKommoWebhookRouter;
