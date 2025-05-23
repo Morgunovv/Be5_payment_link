@@ -93,6 +93,7 @@ class KommoWebhookHandler {
 
             // Получаем данные сделки из Kommo
             const leadData = await this.kommoApi.getLead(leadId);
+            console.log('Lead data:', JSON.stringify(leadData, null, 2));
 
             // Извлекаем суммы из полей (умножаем на 100 для перевода в копейки/центы)
             const salesValue = Math.round(parseFloat(leadData.price || 0) * 100);
@@ -241,12 +242,22 @@ class KommoWebhookHandler {
         console.log('Payment callback received:', paymentData);
 
         try {
-            if (paymentData.status === 'success' && paymentData.leadId) {
-                await this.kommoApi.createNote(
-                    paymentData.leadId,
-                    'Payed successfully'
-                );
-                console.log('Success note added to deal', paymentData.leadId);
+            if (paymentData.status === 'success') {
+                // Получаем leadId из order_id если не пришел в paymentData
+                const leadId = paymentData.leadId ||
+                    (paymentData.order_id?.startsWith('deal_') ?
+                        parseInt(paymentData.order_id.split('_')[1]) : null);
+
+                if (leadId) {
+                    console.log(`Creating success note for deal ${leadId}`);
+                    await this.kommoApi.createNote(
+                        leadId,
+                        `Payment successful\nAmount: ${paymentData.actual_amount / 100} ${paymentData.currency}`
+                    );
+                    console.log('Success note added to deal', leadId);
+                } else {
+                    console.warn('No leadId found in payment callback');
+                }
             }
             return { success: true };
         } catch (error) {
