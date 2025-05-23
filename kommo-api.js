@@ -88,6 +88,88 @@ class KommoAPI {
      * @param {string} text - Note text
      * @returns {Promise<Object>} - Note creation result
      */
+    async updateLeadCustomField(leadId, fieldId, value) {
+        try {
+            // Сначала получаем текущие данные сделки
+            const leadData = await this.getLead(leadId);
+
+            // Подготавливаем данные для обновления
+            const requestData = {
+                id: parseInt(leadId, 10),
+                custom_fields_values: leadData.custom_fields_values || []
+            };
+
+            // Находим или создаем поле для обновления
+            let field = requestData.custom_fields_values.find(f => f.field_id === fieldId);
+            if (!field) {
+                field = {
+                    field_id: fieldId,
+                    values: []
+                };
+                requestData.custom_fields_values.push(field);
+            }
+
+            // Обновляем значение поля
+            field.values = [{ value: value }];
+
+            const response = await axios.patch(
+                `${this.baseUrl}/leads`,
+                { update: [requestData] },
+                { headers: this.getHeaders() }
+            );
+
+            return response.data._embedded?.leads?.[0];
+        } catch (error) {
+            console.error(`Error updating field ${fieldId} for lead ${leadId}:`, error.message);
+            if (error.response) {
+                console.error('Response status:', error.response.status);
+                console.error('Response data:', error.response.data);
+            }
+            throw error;
+        }
+    }
+
+    async searchDealsByCustomField(fieldId, value) {
+        try {
+            const response = await axios.get(
+                `${this.baseUrl}/leads`,
+                {
+                    headers: this.getHeaders(),
+                    params: {
+                        'filter[custom_fields_values][field_id]': fieldId,
+                        'filter[custom_fields_values][values][0][value]': value
+                    }
+                }
+            );
+            return response.data._embedded?.leads || [];
+        } catch (error) {
+            console.error(`Error searching deals by field ${fieldId}:`, error.message);
+            throw error;
+        }
+    }
+
+    async updateLeadStatus(leadId, status) {
+        try {
+            const statusId = status === 'paid' ? 84002755 : 84002756; // Пример ID статусов
+            const requestData = {
+                update: [{
+                    id: parseInt(leadId, 10),
+                    status_id: statusId
+                }]
+            };
+
+            const response = await axios.patch(
+                `${this.baseUrl}/leads`,
+                requestData,
+                { headers: this.getHeaders() }
+            );
+            return response.data;
+        } catch (error) {
+            console.error(`Error updating status for lead ${leadId}:`, error.message);
+            throw error;
+        }
+    }
+
     async createNote(leadId, text) {
         try {
             const requestData = {
