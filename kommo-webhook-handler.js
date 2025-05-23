@@ -17,15 +17,17 @@ class KommoWebhookHandler {
         }
     }
 
-    async processWebhook(webhookData) {
+    async processWebhook(webhookBody) {
         console.log('\n==== KOMMO WEBHOOK PROCESSING STARTED ====');
         const timestamp = new Date().toISOString();
         console.log(`Processing started at: ${timestamp}`);
 
         try {
-            // Если тело пришло в формате form-urlencoded, парсим его
-            console.log('Raw headers:', webhookData.headers);
-            console.log('Raw body type:', typeof webhookData.rawBody);
+            // Получаем данные из тела запроса
+            const webhookData = {
+                body: webhookBody,
+                headers: {}
+            };
             console.log('Raw body first 500 chars:', String(webhookData.rawBody).substring(0, 500));
 
             if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')) {

@@ -30,8 +30,12 @@ function createKommoWebhookRouter(options = {}) {
             fs.writeFileSync(webhookFile, JSON.stringify(webhookData, null, 2));
             console.log('Webhook data saved to:', webhookFile);
 
-            // Обрабатываем вебхук
-            handler.processWebhook(req.body)
+            // Обрабатываем вебхук с полными данными
+            handler.processWebhook({
+                body: req.body,
+                headers: req.headers,
+                rawBody: req.rawBody
+            })
                 .then(result => {
                     res.status(200).json({
                         status: 'success',
