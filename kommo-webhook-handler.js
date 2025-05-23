@@ -100,10 +100,23 @@ class KommoWebhookHandler {
             const customFieldValue = Math.round(parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 888918)?.values[0]?.value || 0) * 100);
             const totalAmount = salesValue + customFieldValue;
 
-            // Получаем название компании (из поля компании или из поля сделки 889650)
-            const companyName = leadData._embedded?.companies?.[0]?.name ||
-                leadData.custom_fields_values?.find(f => f.field_id === 889650)?.values[0]?.value ||
-                'Unknown Company';
+            // Получаем название компании (из встроенных компаний или кастомных полей)
+            let companyName = 'Unknown Company';
+
+            // Проверяем встроенные компании
+            if (leadData._embedded?.companies?.length > 0) {
+                companyName = leadData._embedded.companies[0].name;
+                console.log('Got company name from embedded companies:', companyName);
+            }
+            // Проверяем кастомные поля
+            else {
+                const companyField = leadData.custom_fields_values?.find(f =>
+                    [889650, 'name'].includes(f.field_id?.toString()));
+                if (companyField?.values?.[0]?.value) {
+                    companyName = companyField.values[0].value;
+                    console.log('Got company name from custom field:', companyName);
+                }
+            }
 
             // Создаем платежную ссылку
             const paymentResult = await this.paymentService.createPaymentLink({
@@ -250,11 +263,24 @@ class KommoWebhookHandler {
 
                 if (leadId) {
                     console.log(`Creating success note for deal ${leadId}`);
-                    await this.kommoApi.createNote(
-                        leadId,
-                        `Payment successful\nAmount: ${paymentData.actual_amount / 100} ${paymentData.currency}`
-                    );
-                    console.log('Success note added to deal', leadId);
+                    const noteText = `Payment successful\n` +
+                        `Amount: ${paymentData.actual_amount / 100} ${paymentData.currency}\n` +
+                        `Transaction ID: ${paymentData.payment_id}`;
+
+                    try {
+                        const noteResult = await this.kommoApi.createNote(leadId, noteText);
+                        console.log('Success note added to deal', leadId, 'Note ID:', noteResult.id);
+                    } catch (noteError) {
+                        console.error('Failed to create payment note:', noteError.response?.data || noteError.message);
+                        // Попробуем еще раз через 5 секунд
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        try {
+                            const retryResult = await this.kommoApi.createNote(leadId, noteText);
+                            console.log('Successfully added note on retry:', retryResult.id);
+                        } catch (retryError) {
+                            console.error('Failed to create note on retry:', retryError.message);
+                        }
+                    }
                 } else {
                     console.warn('No leadId found in payment callback');
                 }
