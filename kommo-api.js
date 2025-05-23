@@ -94,7 +94,10 @@ class KommoAPI {
             const requestData = {
                 entity_type: 'leads',
                 id: parseInt(leadId, 10),
-                values: [{ value: value }]
+                custom_fields_values: [{
+                    field_id: fieldId,
+                    values: [{ value: value }]
+                }]
             };
 
             console.log('Updating custom field:', {
