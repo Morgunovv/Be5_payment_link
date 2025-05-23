@@ -10,7 +10,10 @@ dotenv.config();
 class KommoAPI {
     constructor(token, subdomain) {
         this.token = token || process.env.KOMMO_API_TOKEN;
-        this.subdomain = subdomain || process.env.KOMMO_SUBDOMAIN || 'exceltic';
+        this.subdomain = subdomain || process.env.KOMMO_SUBDOMAIN;
+        if (!this.subdomain) {
+            throw new Error('KOMMO_SUBDOMAIN is not defined in environment variables');
+        }
         this.baseUrl = `https://${this.subdomain}.kommo.com/api/v4`;
     }
 
