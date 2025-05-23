@@ -28,7 +28,9 @@ class KommoWebhookHandler {
                 body: webhookBody,
                 headers: {}
             };
-            console.log('Raw body first 500 chars:', String(webhookData.rawBody).substring(0, 500));
+            console.log('Full webhook data:', JSON.stringify(webhookData, null, 2));
+            console.log('Body type:', typeof webhookData.body);
+            console.log('Headers:', webhookData.headers);
 
             if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')) {
                 console.log('Parsing form-urlencoded body');
@@ -124,34 +126,61 @@ class KommoWebhookHandler {
     }
 
     extractLeadId(webhookBody) {
-        // Основные форматы вебхуков Kommo
-        if (webhookBody?.leads?.add?.[0]?.id) {
-            return webhookBody.leads.add[0].id;
-        }
-        if (webhookBody?.leads?.status?.[0]?.id) {
-            return webhookBody.leads.status[0].id;
-        }
-        if (webhookBody?._embedded?.leads?.[0]?.id) {
-            return webhookBody._embedded.leads[0].id;
+        console.log('Searching for lead ID in:', JSON.stringify(webhookBody, null, 2));
+
+        // Проверяем все возможные пути к lead ID
+        const possiblePaths = [
+            'leads.add[0].id',
+            'leads.status[0].id',
+            '_embedded.leads[0].id',
+            'lead_id',
+            'id',
+            'lead.id',
+            'data.lead_id',
+            'data.id',
+            'data.lead.id',
+            'result.lead_id',
+            'result.id'
+        ];
+
+        for (const path of possiblePaths) {
+            try {
+                const value = path.split('.').reduce((obj, key) => {
+                    // Обработка массивов в пути (например leads[0])
+                    const arrayMatch = key.match(/(\w+)\[(\d+)\]/);
+                    if (arrayMatch) {
+                        const arrKey = arrayMatch[1];
+                        const arrIndex = arrayMatch[2];
+                        return obj?.[arrKey]?.[arrIndex];
+                    }
+                    return obj?.[key];
+                }, webhookBody);
+
+                if (value) {
+                    console.log(`Found lead ID in path '${path}': ${value}`);
+                    return parseInt(value);
+                }
+            } catch (e) {
+                console.log(`Error checking path '${path}':`, e.message);
+            }
         }
 
-        // Проверяем все возможные варианты структуры leads
+        // Дополнительная проверка для вложенных leads
         if (webhookBody?.leads) {
+            console.log('Checking nested leads structure');
             const leadsObj = webhookBody.leads;
             for (const key in leadsObj) {
-                if (Array.isArray(leadsObj[key]) && leadsObj[key].length > 0 && leadsObj[key][0].id) {
-                    return leadsObj[key][0].id;
+                if (Array.isArray(leadsObj[key]) && leadsObj[key].length > 0) {
+                    const firstItem = leadsObj[key][0];
+                    if (firstItem.id) {
+                        console.log(`Found lead ID in leads.${key}[0].id: ${firstItem.id}`);
+                        return parseInt(firstItem.id);
+                    }
                 }
             }
         }
 
-        // Проверяем альтернативные форматы
-        const leadId = webhookBody?.lead_id ||
-            webhookBody?.id ||
-            webhookBody?.lead?.id;
-
-        if (leadId) return parseInt(leadId);
-
+        console.warn('No lead ID found in webhook data');
         return null;
     }
 
