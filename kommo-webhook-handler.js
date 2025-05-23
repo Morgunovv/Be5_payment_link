@@ -94,13 +94,15 @@ class KommoWebhookHandler {
             // Получаем данные сделки из Kommo
             const leadData = await this.kommoApi.getLead(leadId);
 
-            // Извлекаем суммы из полей
-            const salesValue = parseFloat(leadData.price || 0);
-            const customFieldValue = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 888918)?.values[0]?.value || 0);
+            // Извлекаем суммы из полей (умножаем на 100 для перевода в копейки/центы)
+            const salesValue = Math.round(parseFloat(leadData.price || 0) * 100);
+            const customFieldValue = Math.round(parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 888918)?.values[0]?.value || 0) * 100);
             const totalAmount = salesValue + customFieldValue;
 
-            // Получаем название компании
-            const companyName = leadData.custom_fields_values?.find(f => f.field_id === 889650)?.values[0]?.value || 'Unknown Company';
+            // Получаем название компании (из поля компании или из поля сделки 889650)
+            const companyName = leadData._embedded?.companies?.[0]?.name ||
+                leadData.custom_fields_values?.find(f => f.field_id === 889650)?.values[0]?.value ||
+                'Unknown Company';
 
             // Создаем платежную ссылку
             const paymentResult = await this.paymentService.createPaymentLink({
