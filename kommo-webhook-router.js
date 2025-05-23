@@ -5,79 +5,78 @@ function createKommoWebhookRouter(options = {}) {
     const router = express.Router();
     const handler = new KommoWebhookHandler(options);
 
-    // Middleware для обработки разных форматов данных
-    router.use((req, res, next) => {
-        // Сохраняем сырые данные запроса
-        req.rawBody = req.body;
+    // Middleware для парсинга JSON и form-data
+    router.use(express.json({ limit: '10mb' }));
+    router.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-        // Проверяем подпись вебхука
-        if (req.headers['x-signature']) {
-            const isValid = this.verifySignature(req.rawBody, req.headers['x-signature']);
-            if (!isValid) {
-                return res.status(403).json({ error: 'Invalid signature' });
-            }
-        }
+    // Обработчик вебхуков
+    router.post('/', (req, res) => {
+        console.log('\n==== KOMMO WEBHOOK RECEIVED ====');
+        const timestamp = new Date().toISOString();
 
-        // Парсим тело запроса в зависимости от content-type
         try {
-            if (req.headers['content-type'] === 'application/x-www-form-urlencoded') {
-                const qs = require('querystring');
-                req.body = qs.parse(req.body.toString());
-            } else if (req.headers['content-type'] === 'application/json') {
-                req.body = typeof req.body === 'object' ? req.body : JSON.parse(req.body);
-            } else {
-                console.warn('Unexpected content-type:', req.headers['content-type']);
-            }
+            // Сохраняем сырые данные вебхука
+            const saveTimestamp = timestamp.replace(/:/g, '-');
+            const webhookFile = path.join(handler.webhooksDir, `kommo-${saveTimestamp}.json`);
 
-            console.log('Received Kommo webhook:', {
-                method: req.method,
-                path: req.path,
+            const webhookData = {
+                timestamp,
                 headers: req.headers,
                 body: req.body
-            });
-        } catch (error) {
-            console.error('Error parsing webhook body:', error);
-            req.body = {};
-        }
-        next();
-    });
+            };
 
-    // Обработчик POST запросов
-    router.post('/', async (req, res) => {
-        try {
-            const result = await handler.processWebhook({
-                headers: req.headers,
-                body: req.body,
-                rawBody: req.rawBody
-            });
+            fs.writeFileSync(webhookFile, JSON.stringify(webhookData, null, 2));
+            console.log('Webhook data saved to:', webhookFile);
 
-            if (result.success) {
-                res.status(200).json({
-                    status: 'success',
-                    message: 'Webhook processed successfully',
-                    leadId: result.leadId,
-                    paymentUrl: result.paymentUrl,
-                    webhookFile: result.webhookFile
+            // Обрабатываем вебхук
+            handler.processWebhook(req.body)
+                .then(result => {
+                    res.status(200).json({
+                        status: 'success',
+                        message: 'Webhook processed',
+                        result
+                    });
+                })
+                .catch(error => {
+                    console.error('Webhook processing error:', error);
+                    res.status(200).json({
+                        status: 'error',
+                        message: 'Webhook processing failed',
+                        error: error.message
+                    });
                 });
-            } else {
-                res.status(400).json({
-                    status: 'error',
-                    message: 'Failed to process webhook',
-                    error: result.error,
-                    webhookFile: result.webhookFile
-                });
-            }
         } catch (error) {
-            console.error('Unexpected error:', error);
-            res.status(500).json({
+            console.error('Error processing webhook:', error);
+            res.status(200).json({
                 status: 'error',
-                message: 'Internal server error',
+                message: 'Error processing webhook',
                 error: error.message
             });
         }
     });
 
     return router;
+}
+
+            } else {
+    res.status(400).json({
+        status: 'error',
+        message: 'Failed to process webhook',
+        error: result.error,
+        webhookFile: result.webhookFile
+    });
+}
+        } catch (error) {
+    console.error('Unexpected error:', error);
+    res.status(500).json({
+        status: 'error',
+        message: 'Internal server error',
+        error: error.message
+    });
+}
+    });
+
+return router;
 }
 
 module.exports = {
