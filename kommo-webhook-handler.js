@@ -91,10 +91,21 @@ class KommoWebhookHandler {
                 return await this.createFallbackPayment();
             }
 
+            // Получаем данные сделки из Kommo
+            const leadData = await this.kommoApi.getLead(leadId);
+
+            // Извлекаем суммы из полей
+            const salesValue = parseFloat(leadData.price || 0);
+            const customFieldValue = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 888918)?.values[0]?.value || 0);
+            const totalAmount = salesValue + customFieldValue;
+
+            // Получаем название компании
+            const companyName = leadData.custom_fields_values?.find(f => f.field_id === 889650)?.values[0]?.value || 'Unknown Company';
+
             // Создаем платежную ссылку
             const paymentResult = await this.paymentService.createPaymentLink({
-                amount: 0,
-                description: `Payment for deal #${leadId}`,
+                amount: totalAmount,
+                description: `Payment for ${companyName} (deal #${leadId})`,
                 callback_url: `${process.env.BASE_URL}/payment-callback`
             });
 
@@ -222,6 +233,27 @@ class KommoWebhookHandler {
             paymentUrl: paymentResult.checkout_url,
             message: 'Payment link created without lead ID'
         };
+    }
+
+    async processPaymentCallback(paymentData) {
+        console.log('Payment callback received:', paymentData);
+
+        try {
+            if (paymentData.status === 'success' && paymentData.leadId) {
+                await this.kommoApi.createNote(
+                    paymentData.leadId,
+                    'Payed successfully'
+                );
+                console.log('Success note added to deal', paymentData.leadId);
+            }
+            return { success: true };
+        } catch (error) {
+            console.error('Payment callback processing error:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
 }
 
