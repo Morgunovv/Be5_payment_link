@@ -1,18 +1,17 @@
-const axios = require('axios');
+const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const KommoAPI = require('./kommo-api');
+const TBCPaymentService = require('./tbc-payment-service');
 
 class KommoWebhookHandler {
     constructor(options = {}) {
         this.token = options.token || process.env.KOMMO_API_TOKEN;
         this.subdomain = options.subdomain || process.env.KOMMO_SUBDOMAIN;
         this.webhooksDir = options.webhooksDir || path.join(__dirname, 'webhooks');
-        // Initialize services
-        this.paymentService = options.paymentService || new (require('./tbc-payment-service'))();
+        this.paymentService = options.paymentService || new TBCPaymentService();
         this.kommoApi = options.kommoApi || new KommoAPI(this.token, this.subdomain);
 
-        // Создаем директорию для вебхуков если не существует
         if (!fs.existsSync(this.webhooksDir)) {
             fs.mkdirSync(this.webhooksDir, { recursive: true });
         }
@@ -22,193 +21,66 @@ class KommoWebhookHandler {
         console.log('\n==== KOMMO WEBHOOK PROCESSING STARTED ====');
         const timestamp = new Date().toISOString();
         console.log(`Processing started at: ${timestamp}`);
-        console.log('=== RAW WEBHOOK DATA ===');
-        console.log('Headers:', JSON.stringify(webhookData.headers, null, 2));
-        console.log('Raw Body:', webhookData.rawBody || 'Empty');
-
-        // Если тело пришло в формате form-urlencoded, парсим его
-        if (webhookData.headers['content-type']?.includes('application/x-www-form-urlencoded')) {
-            console.log('Parsing form-urlencoded body');
-
-            if (typeof webhookData.rawBody === 'string') {
-                try {
-                    const parsed = {};
-                    const params = new URLSearchParams(webhookData.rawBody);
-
-                    // Логируем все параметры для диагностики
-                    console.log('Raw URL params:', Array.from(params.entries()));
-
-                    for (const [key, value] of params.entries()) {
-                        parsed[key] = value;
-                        // Специальная обработка для [object Object]
-                        if (key.includes('[object Object]')) {
-                            try {
-                                const jsonValue = JSON.parse(value);
-                                Object.assign(parsed, jsonValue);
-                            } catch (e) {
-                                console.log('Failed to parse [object Object] value');
-                            }
-                        }
-                    }
-                    webhookData.body = parsed;
-                } catch (e) {
-                    console.error('Error parsing form-urlencoded:', e);
-                    webhookData.body = { error: 'Failed to parse form data' };
-                }
-            } else {
-                console.log('rawBody is not a string:', typeof webhookData.rawBody);
-            }
-        }
-
-        console.log('Parsed Body:', JSON.stringify(webhookData.body, null, 2));
-
-        const saveTimestamp = timestamp.replace(/:/g, '-');
-        const webhookFile = path.join(this.webhooksDir, `kommo-${saveTimestamp}.json`);
 
         try {
-            // Save raw webhook data with additional metadata
+            // Save raw webhook data
+            const saveTimestamp = timestamp.replace(/:/g, '-');
+            const webhookFile = path.join(this.webhooksDir, `kommo-${saveTimestamp}.json`);
+
             const fullWebhookData = {
                 timestamp,
                 headers: webhookData.headers,
                 body: webhookData.body,
-                rawBody: webhookData.rawBody, // Add raw body for debugging
+                rawBody: webhookData.rawBody,
                 receivedAt: new Date().toISOString()
             };
 
             fs.writeFileSync(webhookFile, JSON.stringify(fullWebhookData, null, 2));
-            console.log('=== WEBHOOK SAVED ===');
-            console.log(`File: ${path.basename(webhookFile)}`);
-            console.log(`Path: ${webhookFile}`);
-            console.log('=====================');
+            console.log('Webhook data saved to:', webhookFile);
 
-            // Extract lead ID from different webhook formats
-            console.log('Extracting lead ID from webhook data...');
-            console.log('Full webhook body:', JSON.stringify(webhookData.body, null, 2));
-            console.log('Raw webhook body:', webhookData.rawBody);
-
+            // Extract lead ID
             const leadId = this.extractLeadId(webhookData.body);
             console.log(`Extracted lead ID: ${leadId || 'Not found'}`);
 
             if (!leadId) {
-                console.warn('No lead ID found in webhook data. Creating fallback payment link');
-                console.log('Webhook body:', JSON.stringify(webhookData.body, null, 2));
-                console.log('Raw webhook body:', webhookData.rawBody);
-
-                const paymentResult = await this.paymentService.createPaymentLink({
-                    amount: 0,
-                    description: 'Payment for unknown deal',
-                    callback_url: `${process.env.BASE_URL}/payment-callback`
-                });
-
-                console.log('Fallback payment link created:', paymentResult.checkout_url);
-                console.log('Note: Cannot add Kommo note without lead ID');
-
-                return {
-                    success: true,
-                    leadId: null,
-                    paymentUrl: paymentResult.checkout_url,
-                    webhookFile,
-                    message: 'Payment link created without lead ID'
-                };
+                return await this.createFallbackPayment();
             }
 
-            // Get deal data from Kommo API
-            console.log(`Fetching deal data for lead ID: ${leadId}`);
-            const dealData = await this.getDealData(leadId);
-            console.log('Deal data fetched successfully');
-
             // Create payment link
-            const paymentAmount = dealData.lead.price || 0;
-            const paymentDescription = `Payment for deal #${leadId}`;
-            console.log(`Creating payment link for amount: ${paymentAmount}`);
-
             const paymentResult = await this.paymentService.createPaymentLink({
-                amount: paymentAmount,
-                description: paymentDescription,
+                amount: 0, // Will be updated with actual amount
+                description: `Payment for deal #${leadId}`,
                 callback_url: `${process.env.BASE_URL}/payment-callback`
             });
 
-            // Add payment link note to the lead
-            try {
-                const noteText = `✅ Payment Link Created\n\n` +
-                    `Amount: ${paymentAmount} GEL\n` +
-                    `Payment URL: ${paymentResult.checkout_url}\n\n` +
-                    `Click to pay: ${paymentResult.checkout_url}`;
-
-                await this.kommoApi.createNote(leadId, noteText);
-                console.log('Payment link note added to the lead');
-            } catch (noteError) {
-                console.error('Failed to add payment link note:', noteError.message);
+            // Add note to Kommo
+            if (this.token && this.subdomain) {
+                try {
+                    const noteText = `Payment Link Created\n\n` +
+                        `Payment URL: ${paymentResult.checkout_url}`;
+                    await this.kommoApi.createNote(leadId, noteText);
+                } catch (noteError) {
+                    console.error('Failed to add payment link note:', noteError);
+                }
             }
-
-            console.log('Payment link created successfully');
-            console.log('==== KOMMO WEBHOOK PROCESSING COMPLETED ====\n');
 
             return {
                 success: true,
                 leadId,
-                dealData,
                 paymentUrl: paymentResult.checkout_url,
                 webhookFile
             };
+
         } catch (error) {
             console.error('Webhook processing error:', error);
-
-            // Even in case of error, try to create a basic payment link
-            try {
-                const paymentResult = await this.paymentService.createPaymentLink({
-                    amount: 0,
-                    description: 'Payment for deal (error occurred)',
-                    callback_url: `${process.env.BASE_URL}/payment-callback`
-                });
-
-                // Try to add note about error
-                if (leadId) { // Only add error note if we have a valid lead ID
-                    try {
-                        const noteText = `⚠️ Payment Link (Error)\n\n` +
-                            `Error: ${error.message}\n` +
-                            `Payment URL: ${paymentResult.checkout_url}\n\n` +
-                            `Click to pay: ${paymentResult.checkout_url}`;
-
-                        await this.kommoApi.createNote(leadId, noteText);
-                        console.log('Error note added');
-                    } catch (noteError) {
-                        console.error('Failed to add error note:', noteError.message);
-                    }
-                } else {
-                    console.log('Skipping error note - no valid lead ID');
-                }
-
-                return {
-                    success: false,
-                    error: error.message,
-                    paymentUrl: paymentResult.checkout_url,
-                    webhookFile,
-                    message: 'Error occurred but basic payment link was created'
-                };
-            } catch (paymentError) {
-                console.error('Failed to create fallback payment link:', paymentError);
-                return {
-                    success: false,
-                    error: error.message,
-                    webhookFile,
-                    paymentError: paymentError.message
-                };
-            }
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 
     extractLeadId(webhookBody) {
-        // Сначала проверим, если это строка "[object Object]" - попробуем распарсить
-        if (typeof webhookBody === 'string' && webhookBody.includes('[object Object]')) {
-            try {
-                const parsed = JSON.parse(webhookBody);
-                if (parsed?.leads) webhookBody = parsed;
-            } catch (e) {
-                console.log('Failed to parse "[object Object]" string');
-            }
-        }
-
         // Основные форматы вебхуков Kommo
         if (webhookBody?.leads?.add?.[0]?.id) {
             return webhookBody.leads.add[0].id;
@@ -222,97 +94,33 @@ class KommoWebhookHandler {
 
         // Обработка некорректного формата form-urlencoded
         if (typeof webhookBody === 'string') {
-            // Попробуем разные варианты парсинга URL-encoded данных
-            const params = new URLSearchParams(webhookBody);
-
-            // Вариант 1: leads[add][0][id]
-            let leadId = params.get('leads[add][0][id]');
-            if (leadId) return parseInt(leadId);
-
-            // Вариант 2: leads%5Badd%5D%5B0%5D%5Bid%5D (URL-encoded)
-            leadId = params.get('leads%5Badd%5D%5B0%5D%5Bid%5D');
-            if (leadId) return parseInt(leadId);
-
-            // Вариант 3: leads_add_0_id (альтернативный формат)
-            leadId = params.get('leads_add_0_id');
-            if (leadId) return parseInt(leadId);
-
-            // Вариант 4: leads[status][0][id]
-            leadId = params.get('leads[status][0][id]');
-            if (leadId) return parseInt(leadId);
-        }
-
-        // Дополнительные проверки
-        const leadId = this.findLeadIdInObject(webhookBody?.leads);
-        if (leadId) return leadId;
-
-        console.error('Lead ID not found in webhook:', JSON.stringify(webhookBody, null, 2));
-        return null;
-    }
-
-    findLeadIdInObject(leadsObj) {
-        if (!leadsObj) return null;
-
-        for (const key in leadsObj) {
-            if (Array.isArray(leadsObj[key])) {
-                for (const item of leadsObj[key]) {
-                    if (item.id) return item.id;
-                }
+            try {
+                const params = new URLSearchParams(webhookBody);
+                let leadId = params.get('leads[add][0][id]') ||
+                    params.get('leads%5Badd%5D%5B0%5D%5Bid%5D') ||
+                    params.get('leads_add_0_id');
+                if (leadId) return parseInt(leadId);
+            } catch (e) {
+                console.error('Error parsing URL encoded data:', e);
             }
         }
+
         return null;
     }
 
-    async getDealData(leadId) {
-        if (!this.token || !this.subdomain) {
-            console.error('Kommo API credentials not configured');
-            throw new Error('Kommo API credentials not configured');
-        }
-
-        const baseUrl = `https://${this.subdomain}.kommo.com/api/v4`;
-        console.log(`Attempting to fetch deal ${leadId} from ${baseUrl}`);
-        const headers = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.token}`
-        };
-
-        // Get lead data
-        const leadResponse = await axios.get(`${baseUrl}/leads/${leadId}`, { headers });
-        const lead = leadResponse.data;
-
-        // Get related contacts and companies
-        const [contacts, companies] = await Promise.all([
-            this.getRelatedEntities(lead._embedded?.contacts, 'contacts', headers),
-            this.getRelatedEntities(lead._embedded?.companies, 'companies', headers)
-        ]);
-
+    async createFallbackPayment() {
+        console.warn('No lead ID found. Creating fallback payment link');
+        const paymentResult = await this.paymentService.createPaymentLink({
+            amount: 0,
+            description: 'Payment for unknown deal',
+            callback_url: `${process.env.BASE_URL}/payment-callback`
+        });
         return {
-            lead,
-            contacts,
-            companies
+            success: true,
+            leadId: null,
+            paymentUrl: paymentResult.checkout_url,
+            message: 'Payment link created without lead ID'
         };
-    }
-
-    verifySignature(rawBody, signature) {
-        // TODO: Implement proper signature verification
-        // For now just log and return true
-        console.log('Webhook signature verification:', signature);
-        return true;
-    }
-
-    async getRelatedEntities(entities, entityType, headers) {
-        if (!entities || !entities.length) return [];
-
-        return Promise.all(
-            entities.map(entity =>
-                axios.get(`${baseUrl}/${entityType}/${entity.id}`, { headers })
-                    .then(res => res.data)
-                    .catch(err => {
-                        console.error(`Error fetching ${entityType} ${entity.id}:`, err);
-                        return null;
-                    })
-            )
-        ).then(results => results.filter(Boolean));
     }
 }
 
