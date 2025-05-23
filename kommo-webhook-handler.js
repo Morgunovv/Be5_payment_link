@@ -128,55 +128,80 @@ class KommoWebhookHandler {
     extractLeadId(webhookBody) {
         console.log('Searching for lead ID in:', JSON.stringify(webhookBody, null, 2));
 
-        // Проверяем все возможные пути к lead ID
+        // Проверяем разные уровни вложенности
+        const dataToCheck = [
+            webhookBody, // Проверяем корневой уровень
+            webhookBody?.body, // Проверяем вложенный body
+            webhookBody?.data, // Проверяем вложенный data
+            webhookBody?.result // Проверяем вложенный result
+        ].filter(Boolean);
+
+        // Проверяем все возможные пути к lead ID для каждого уровня
         const possiblePaths = [
             'leads.add[0].id',
             'leads.status[0].id',
             '_embedded.leads[0].id',
             'lead_id',
             'id',
-            'lead.id',
-            'data.lead_id',
-            'data.id',
-            'data.lead.id',
-            'result.lead_id',
-            'result.id'
+            'lead.id'
         ];
 
-        for (const path of possiblePaths) {
-            try {
-                const value = path.split('.').reduce((obj, key) => {
-                    // Обработка массивов в пути (например leads[0])
-                    const arrayMatch = key.match(/(\w+)\[(\d+)\]/);
-                    if (arrayMatch) {
-                        const arrKey = arrayMatch[1];
-                        const arrIndex = arrayMatch[2];
-                        return obj?.[arrKey]?.[arrIndex];
-                    }
-                    return obj?.[key];
-                }, webhookBody);
+        for (const data of dataToCheck) {
+            for (const path of possiblePaths) {
+                try {
+                    const value = path.split('.').reduce((obj, key) => {
+                        const arrayMatch = key.match(/(\w+)\[(\d+)\]/);
+                        if (arrayMatch) {
+                            const arrKey = arrayMatch[1];
+                            const arrIndex = arrayMatch[2];
+                            return obj?.[arrKey]?.[arrIndex];
+                        }
+                        return obj?.[key];
+                    }, data);
 
-                if (value) {
-                    console.log(`Found lead ID in path '${path}': ${value}`);
-                    return parseInt(value);
+                    if (value) {
+                        console.log(`Found lead ID in path '${path}': ${value}`);
+                        return parseInt(value);
+                    }
+                } catch (e) {
+                    console.log(`Error checking path '${path}':`, e.message);
                 }
-            } catch (e) {
-                console.log(`Error checking path '${path}':`, e.message);
+            }
+
+            // Дополнительная проверка для вложенных leads
+            if (data?.leads) {
+                console.log('Checking nested leads structure');
+                const leadsObj = data.leads;
+                for (const key in leadsObj) {
+                    if (Array.isArray(leadsObj[key]) && leadsObj[key].length > 0) {
+                        const firstItem = leadsObj[key][0];
+                        if (firstItem.id) {
+                            console.log(`Found lead ID in leads.${key}[0].id: ${firstItem.id}`);
+                            return parseInt(firstItem.id);
+                        }
+                    }
+                }
             }
         }
 
-        // Дополнительная проверка для вложенных leads
-        if (webhookBody?.leads) {
-            console.log('Checking nested leads structure');
-            const leadsObj = webhookBody.leads;
-            for (const key in leadsObj) {
-                if (Array.isArray(leadsObj[key]) && leadsObj[key].length > 0) {
-                    const firstItem = leadsObj[key][0];
-                    if (firstItem.id) {
-                        console.log(`Found lead ID in leads.${key}[0].id: ${firstItem.id}`);
-                        return parseInt(firstItem.id);
-                    }
+        // Если ничего не нашли, проверяем сырые данные
+        if (webhookBody?.rawBody) {
+            try {
+                const rawStr = typeof webhookBody.rawBody === 'string' ? webhookBody.rawBody :
+                    Buffer.isBuffer(webhookBody.rawBody) ? webhookBody.rawBody.toString() :
+                        JSON.stringify(webhookBody.rawBody);
+
+                // Ищем ID в сырых данных
+                const idMatch = rawStr.match(/leads%5Badd%5D%5B0%5D%5Bid%5D=(\d+)/) ||
+                    rawStr.match(/leads\[add\]\[0\]\[id\]=(\d+)/) ||
+                    rawStr.match(/id=(\d+)/);
+
+                if (idMatch && idMatch[1]) {
+                    console.log(`Found lead ID in raw body: ${idMatch[1]}`);
+                    return parseInt(idMatch[1]);
                 }
+            } catch (e) {
+                console.log('Error parsing raw body:', e.message);
             }
         }
 
