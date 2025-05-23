@@ -90,13 +90,24 @@ class KommoAPI {
      */
     async updateLeadCustomField(leadId, fieldId, value) {
         try {
+            const url = `${this.baseUrl}/leads/custom_fields/${fieldId}`;
+            const requestData = {
+                entity_type: 'leads',
+                id: parseInt(leadId, 10),
+                values: [{ value: value }]
+            };
+
+            console.log('Updating custom field:', {
+                url,
+                leadId,
+                fieldId,
+                value,
+                headers: this.getHeaders()
+            });
+
             const response = await axios.patch(
-                `${this.baseUrl}/leads/custom_fields/${fieldId}`,
-                {
-                    entity_type: 'leads',
-                    id: parseInt(leadId, 10),
-                    values: [{ value: value }]
-                },
+                url,
+                requestData,
                 {
                     headers: {
                         ...this.getHeaders(),
@@ -104,6 +115,12 @@ class KommoAPI {
                     }
                 }
             );
+
+            console.log('Custom field update response:', {
+                status: response.status,
+                data: response.data
+            });
+
             return response.data;
         } catch (error) {
             console.error(`Error updating field ${fieldId} for lead ${leadId}:`, error.message);
