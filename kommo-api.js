@@ -90,33 +90,40 @@ class KommoAPI {
      */
     async updateLeadCustomField(leadId, fieldId, value) {
         try {
-            const url = `${this.baseUrl}/leads/custom_fields/${fieldId}`;
+            // Получаем текущие данные сделки
+            const leadData = await this.getLead(leadId);
+
+            // Подготавливаем данные для обновления
             const requestData = {
-                entity_type: 'leads',
-                id: parseInt(leadId, 10),
-                custom_fields_values: [{
-                    field_id: fieldId,
-                    values: [{ value: value }]
+                update: [{
+                    id: parseInt(leadId, 10),
+                    custom_fields_values: leadData.custom_fields_values || []
                 }]
             };
 
+            // Находим или создаем поле для обновления
+            let field = requestData.update[0].custom_fields_values.find(f => f.field_id === fieldId);
+            if (!field) {
+                field = {
+                    field_id: fieldId,
+                    values: []
+                };
+                requestData.update[0].custom_fields_values.push(field);
+            }
+
+            // Обновляем значение поля
+            field.values = [{ value: value }];
+
             console.log('Updating custom field:', {
-                url,
-                leadId,
-                fieldId,
-                value,
+                url: `${this.baseUrl}/leads`,
+                requestData,
                 headers: this.getHeaders()
             });
 
             const response = await axios.patch(
-                url,
+                `${this.baseUrl}/leads`,
                 requestData,
-                {
-                    headers: {
-                        ...this.getHeaders(),
-                        'Accept': 'application/hal+json'
-                    }
-                }
+                { headers: this.getHeaders() }
             );
 
             console.log('Custom field update response:', {
@@ -124,7 +131,7 @@ class KommoAPI {
                 data: response.data
             });
 
-            return response.data;
+            return response.data._embedded?.leads?.[0];
         } catch (error) {
             console.error(`Error updating field ${fieldId} for lead ${leadId}:`, error.message);
             if (error.response) {
