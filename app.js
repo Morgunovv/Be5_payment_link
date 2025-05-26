@@ -198,32 +198,51 @@ app.post('/callback', async (req, res) => {
 // Route to handle payment callback from TBC payment links
 app.post('/payment-callback', async (req, res) => {
     try {
+        // Log raw request data for debugging
+        console.log('==== RAW PAYMENT CALLBACK REQUEST ====');
+        console.log('Headers:', req.headers);
+        console.log('Raw body:', req.rawBody);
+
+        if (!req.body || Object.keys(req.body).length === 0) {
+            throw new Error('Empty payment callback body');
+        }
+
         const callbackData = req.body;
-        console.log('==== PAYMENT CALLBACK RECEIVED ====');
-        console.log('Payment callback data:', callbackData);
+        console.log('==== PAYMENT CALLBACK DETAILS ====');
+        console.log('Parsed callback data:', JSON.stringify(callbackData, null, 2));
 
         const handler = new (require('./kommo-webhook-handler'))();
         const result = await handler.processPaymentCallback(callbackData);
 
         if (result.success) {
-            console.log('Payment processed successfully');
-            res.status(200).json({ status: 'success' });
+            console.log('==== PAYMENT PROCESSED SUCCESSFULLY ====');
+            console.log('Result:', JSON.stringify(result, null, 2));
+            res.status(200).json({
+                status: 'success',
+                paymentId: result.paymentId,
+                leadId: result.leadId
+            });
         } else {
-            console.error('Payment processing failed:', result.error);
+            console.error('==== PAYMENT PROCESSING FAILED ====');
+            console.error('Error:', result.error);
             res.status(400).json({
                 status: 'error',
-                error: result.error
+                error: result.error,
+                details: result.details || null
             });
         }
     } catch (error) {
-        console.error('Callback processing error:', {
+        console.error('==== CALLBACK PROCESSING ERROR ====');
+        console.error('Error details:', {
             message: error.message,
-            data: req.body,
-            stack: error.stack
+            stack: error.stack,
+            rawBody: req.rawBody,
+            parsedBody: req.body
         });
         res.status(500).json({
-            error: 'Callback processing failed',
-            details: error.message
+            status: 'error',
+            error: 'Internal server error',
+            details: process.env.NODE_ENV === 'development' ? error.message : null
         });
     }
 });
