@@ -91,32 +91,76 @@ class KommoWebhookHandler {
                 return await this.createFallbackPayment();
             }
 
-            // Получаем данные сделки из Kommo
-            const leadData = await this.kommoApi.getLead(leadId);
-            console.log('Lead data:', JSON.stringify(leadData, null, 2));
+            // Получаем данные сделки из Kommo с включенными компаниями
+            const leadData = await this.kommoApi.getLead(leadId, 'companies');
+            console.log('Lead data with companies:', JSON.stringify(leadData, null, 2));
+
+            // Проверяем встроенные компании в сделке
+            if (leadData._embedded?.companies?.length > 0) {
+                console.log('Found embedded companies in lead data');
+            }
 
             // Извлекаем суммы из полей (умножаем на 100 для перевода в копейки/центы)
             const salesValue = Math.round(parseFloat(leadData.price || 0) * 100);
             const customFieldValue = Math.round(parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 888918)?.values[0]?.value || 0) * 100);
             const totalAmount = salesValue + customFieldValue;
 
-            // Получаем название компании (из встроенных компаний или кастомных полей)
-            let companyName = 'Unknown Company';
+            // Получаем название компании
+            let companyName = 'Company';
 
-            // Проверяем встроенные компании
-            if (leadData._embedded?.companies?.length > 0) {
-                companyName = leadData._embedded.companies[0].name;
-                console.log('Got company name from embedded companies:', companyName);
-            }
-            // Проверяем кастомные поля
-            else {
-                const companyField = leadData.custom_fields_values?.find(f =>
-                    [889650, 'name'].includes(f.field_id?.toString()));
-                if (companyField?.values?.[0]?.value) {
-                    companyName = companyField.values[0].value;
-                    console.log('Got company name from custom field:', companyName);
+            try {
+                // 1. Получаем компании связанные со сделкой через API
+                const companiesResponse = await this.kommoApi.getLeadCompanies(leadId);
+                console.log('Companies API response:', JSON.stringify(companiesResponse, null, 2));
+
+                // Check different response formats
+                const companies = companiesResponse._embedded?.companies || companiesResponse;
+
+                if (Array.isArray(companies) && companies.length > 0) {
+                    const company = companies[0];
+                    if (company.name) {
+                        companyName = company.name.trim();
+                        console.log('Got company name from API:', companyName);
+                    } else {
+                        console.log('Company found but no name property:', company);
+                    }
                 }
+
+                // 2. Если не нашли в API, проверяем встроенные компании
+                if (companyName === 'Company' && leadData._embedded?.companies?.length > 0 && leadData._embedded.companies[0].name) {
+                    companyName = leadData._embedded.companies[0].name.trim();
+                    console.log('Got company name from embedded companies:', companyName);
+                }
+
+                // 3. Если все еще не нашли, проверяем кастомные поля
+                if (companyName === 'Company') {
+                    const companyFieldsToCheck = [
+                        889650, // Основное поле компании
+                        980726, // Дополнительное поле
+                        123456  // Резервное поле
+                    ];
+
+                    for (const fieldId of companyFieldsToCheck) {
+                        const companyField = leadData.custom_fields_values?.find(f =>
+                            f.field_id === fieldId);
+                        if (companyField?.values?.[0]?.value) {
+                            companyName = companyField.values[0].value.trim();
+                            console.log(`Got company name from custom field ${fieldId}:`, companyName);
+                            break;
+                        }
+                    }
+                }
+
+                // Валидация названия компании
+                if (!companyName || companyName === 'Company') {
+                    throw new Error('No valid company name found');
+                }
+            } catch (error) {
+                console.error('Error getting company name:', error);
+                throw new Error('Could not determine company name for payment');
             }
+
+            console.log('Final company name:', companyName);
 
             // Создаем платежную ссылку с полным логированием
             const paymentRequest = {

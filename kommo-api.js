@@ -26,10 +26,10 @@ class KommoAPI {
         };
     }
 
-    async getLead(leadId) {
+    async getLead(leadId, withEntities = '') {
         try {
             const response = await axios.get(
-                `${this.baseUrl}/leads/${leadId}`,
+                `${this.baseUrl}/leads/${leadId}${withEntities ? `?with=${withEntities}` : ''}`,
                 { headers: this.getHeaders() }
             );
             return response.data;
@@ -249,6 +249,30 @@ class KommoAPI {
                 console.error('Response status:', error.response.status);
                 console.error('Response data:', error.response.data);
                 console.error('Response headers:', error.response.headers);
+            }
+            throw error;
+        }
+    }
+
+    async getLeadCompanies(leadId) {
+        try {
+            console.log(`Getting companies for lead ${leadId}`);
+            const response = await axios.get(
+                `${this.baseUrl}/companies?filter[leads_id]=${leadId}`,
+                {
+                    headers: this.getHeaders(),
+                    timeout: 10000
+                }
+            );
+
+            const companies = response.data._embedded?.companies || [];
+            console.log(`Found ${companies.length} companies for lead ${leadId}`);
+            return companies;
+        } catch (error) {
+            console.error(`Error getting companies for lead ${leadId}:`, error);
+            if (error.response) {
+                console.error('Response status:', error.response.status);
+                console.error('Response data:', error.response.data);
             }
             throw error;
         }
