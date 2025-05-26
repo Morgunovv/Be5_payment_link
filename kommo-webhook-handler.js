@@ -369,6 +369,25 @@ class KommoWebhookHandler {
                 throw new Error(`Failed to save payment to database: ${dbError.message}`);
             }
 
+            // Update deal status in Kommo
+            try {
+                await this.kommoApi.updateLeadStatus(leadId, 'won');
+                console.log(`Deal ${leadId} status updated to WON`);
+
+                // Create payment note
+                const noteText = `Payment successful\n` +
+                    `Amount: ${paymentData.actual_amount / 100} ${paymentData.currency}\n` +
+                    `Transaction ID: ${paymentId}\n` +
+                    `Card: ${paymentData.masked_card || paymentData.card_type || 'N/A'}\n` +
+                    `Date: ${new Date().toISOString()}`;
+
+                await this.kommoApi.createNote(leadId, noteText);
+                console.log('Payment note added to deal');
+            } catch (kommoError) {
+                console.error('Failed to update Kommo deal:', kommoError);
+                // We still return success since payment was processed
+            }
+
             return {
                 success: true,
                 leadId,

@@ -216,20 +216,40 @@ class KommoAPI {
         try {
             const statusId = status === 'won' ? 142 : 84002756; // WON (142) или другой статус
             const requestData = {
-                update: [{
-                    id: parseInt(leadId, 10),
-                    status_id: statusId
-                }]
+                status_id: statusId,
+                updated_at: Math.floor(Date.now() / 1000)
             };
 
+            console.log('Updating lead status with data:', JSON.stringify(requestData, null, 2));
+
             const response = await axios.patch(
-                `${this.baseUrl}/leads`,
+                `${this.baseUrl}/leads/${parseInt(leadId, 10)}`,
                 requestData,
-                { headers: this.getHeaders() }
+                {
+                    headers: this.getHeaders(),
+                    timeout: 10000
+                }
             );
+
+            console.log('Lead status update response:', {
+                status: response.status,
+                data: response.data
+            });
+
+            // Verify the status was actually updated
+            const updatedLead = await this.getLead(leadId);
+            if (updatedLead.status_id !== statusId) {
+                throw new Error(`Status update verification failed. Expected: ${statusId}, Actual: ${updatedLead.status_id}`);
+            }
+
             return response.data;
         } catch (error) {
-            console.error(`Error updating status for lead ${leadId}:`, error.message);
+            console.error(`Error updating status for lead ${leadId}:`, error);
+            if (error.response) {
+                console.error('Response status:', error.response.status);
+                console.error('Response data:', error.response.data);
+                console.error('Response headers:', error.response.headers);
+            }
             throw error;
         }
     }
