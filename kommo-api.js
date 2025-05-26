@@ -88,41 +88,57 @@ class KommoAPI {
      * @param {string} text - Note text
      * @returns {Promise<Object>} - Note creation result
      */
+    async getCustomFields(entityType = 'leads') {
+        try {
+            const response = await axios.get(
+                `${this.baseUrl}/${entityType}/custom_fields`,
+                { headers: this.getHeaders() }
+            );
+            return response.data._embedded?.custom_fields || [];
+        } catch (error) {
+            console.error(`Error getting ${entityType} custom fields:`, error.message);
+            throw error;
+        }
+    }
+
     async updateLeadCustomField(leadId, fieldId, value) {
         try {
+            // Get all custom fields to verify field exists
+            const customFields = await this.getCustomFields();
+            const targetField = customFields.find(f => f.id === fieldId);
+
+            if (!targetField) {
+                throw new Error(`Field ${fieldId} not found in custom fields`);
+            }
+
+            console.log('Target field details:', JSON.stringify(targetField, null, 2));
+
             // Get current lead data to check existing field properties
             const leadData = await this.getLead(leadId);
 
             // Find existing field to get its properties
             const existingField = leadData.custom_fields_values?.find(f => f.field_id === fieldId);
 
-            // Prepare the field update data
-            const fieldUpdate = {
-                field_id: fieldId,
-                field_name: existingField?.field_name || '',
-                field_code: existingField?.field_code || null,
-                field_type: existingField?.field_type || 'text',
-                values: [{
-                    value: String(value)
+            // Prepare the field update in minimal format that works
+            const requestData = {
+                custom_fields_values: [{
+                    field_id: fieldId,
+                    values: [{
+                        value: String(value)
+                    }]
                 }]
             };
 
-            // Prepare the full request data
-            const requestData = {
-                update: [{
-                    id: parseInt(leadId, 10),
-                    custom_fields_values: [fieldUpdate]
-                }]
-            };
+            console.log('Full request data:', JSON.stringify(requestData, null, 2));
 
             console.log('Updating custom field:', {
-                url: `${this.baseUrl}/leads`,
+                url: `${this.baseUrl}/leads/${leadId}`,
                 requestData,
                 headers: this.getHeaders()
             });
 
             const response = await axios.patch(
-                `${this.baseUrl}/leads`,
+                `${this.baseUrl}/leads/${leadId}`,
                 requestData,
                 { headers: this.getHeaders() }
             );
@@ -164,7 +180,7 @@ class KommoAPI {
 
     async updateLeadStatus(leadId, status) {
         try {
-            const statusId = status === 'paid' ? 84002755 : 84002756; // Пример ID статусов
+            const statusId = status === 'won' ? 142 : 84002756; // WON (142) или другой статус
             const requestData = {
                 update: [{
                     id: parseInt(leadId, 10),

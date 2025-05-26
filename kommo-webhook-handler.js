@@ -140,29 +140,56 @@ class KommoWebhookHandler {
                     // Создаем заметку
                     await this.kommoApi.createNote(leadId, noteText);
 
+                    // Проверяем существование поля 980726 в сделке
+                    const customFieldExists = leadData.custom_fields_values?.some(f => f.field_id === 980726);
+                    if (!customFieldExists) {
+                        console.error(`Custom field 980726 not found in deal ${leadId}. Cannot save payment_id.`);
+                        throw new Error(`Payment ID field (980726) not found in deal ${leadId}`);
+                    }
+
                     // Обновляем поле сделки с payment_id с улучшенным логированием
                     try {
-                        console.log(`Attempting to save payment_id ${paymentResult.payment_id} to deal ${leadId} field 980416`);
+                        console.log(`Attempting to save payment_id ${paymentResult.payment_id} to deal ${leadId} field 980726`);
                         const updateResult = await this.kommoApi.updateLeadCustomField(
                             leadId,
-                            980416,
+                            980726,
                             paymentResult.payment_id.toString()
                         );
-                        console.log('Field update result:', JSON.stringify(updateResult, null, 2));
+
+                        // Проверяем, что поле действительно обновилось
+                        const updatedLead = await this.kommoApi.getLead(leadId);
+                        const savedPaymentId = updatedLead.custom_fields_values?.find(f => f.field_id === 980726)?.values[0]?.value;
+
+                        if (savedPaymentId !== paymentResult.payment_id.toString()) {
+                            throw new Error(`Payment ID was not saved correctly. Expected: ${paymentResult.payment_id}, Actual: ${savedPaymentId}`);
+                        }
+
+                        console.log('Field update verified successfully:', JSON.stringify(updateResult, null, 2));
                         console.log(`Successfully saved payment_id to deal ${leadId}`);
                     } catch (fieldError) {
                         console.error('Failed to update custom field:', fieldError);
                         // Retry after 5 seconds
                         await new Promise(resolve => setTimeout(resolve, 5000));
                         try {
-                            await this.kommoApi.updateLeadCustomField(
+                            console.log('Retrying field update...');
+                            const retryResult = await this.kommoApi.updateLeadCustomField(
                                 leadId,
-                                980416,
+                                980726,
                                 paymentResult.payment_id.toString()
                             );
-                            console.log('Successfully updated field on retry');
+
+                            // Проверяем результат повторной попытки
+                            const retryLead = await this.kommoApi.getLead(leadId);
+                            const retryPaymentId = retryLead.custom_fields_values?.find(f => f.field_id === 980726)?.values[0]?.value;
+
+                            if (retryPaymentId !== paymentResult.payment_id.toString()) {
+                                throw new Error(`Payment ID was not saved correctly on retry. Expected: ${paymentResult.payment_id}, Actual: ${retryPaymentId}`);
+                            }
+
+                            console.log('Successfully updated field on retry:', JSON.stringify(retryResult, null, 2));
                         } catch (retryError) {
                             console.error('Failed to update field on retry:', retryError);
+                            throw retryError;
                         }
                     }
                 } catch (error) {
@@ -294,9 +321,9 @@ class KommoWebhookHandler {
 
                 // Сначала пробуем найти сделку по payment_id в поле 980416
                 if (paymentData.payment_id) {
-                    console.log(`Searching deal with payment_id ${paymentData.payment_id} in field 980416`);
+                    console.log(`Searching deal with payment_id ${paymentData.payment_id} in field 980726`);
                     const deals = await this.kommoApi.searchDealsByCustomField(
-                        980416,
+                        980726,
                         paymentData.payment_id.toString()
                     );
 
@@ -322,8 +349,8 @@ class KommoWebhookHandler {
                         const noteResult = await this.kommoApi.createNote(leadId, noteText);
                         console.log('Success note added to deal', leadId, 'Note ID:', noteResult.id);
 
-                        // Обновляем статус сделки
-                        await this.kommoApi.updateLeadStatus(leadId, 'paid');
+                        // Обновляем статус сделки на WON (ID 142)
+                        await this.kommoApi.updateLeadStatus(leadId, 'won');
                     } catch (noteError) {
                         console.error('Failed to process payment:', noteError);
                         // Retry logic...
