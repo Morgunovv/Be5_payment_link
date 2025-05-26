@@ -313,58 +313,105 @@ class KommoWebhookHandler {
     }
 
     async processPaymentCallback(paymentData) {
-        console.log('Payment callback received:', paymentData);
+        console.log('==== PAYMENT CALLBACK DETAILS ====');
+        console.log('Full payment data:', JSON.stringify(paymentData, null, 2));
 
         try {
-            if (paymentData.status === 'success') {
-                let leadId = null;
-
-                // Сначала пробуем найти сделку по payment_id в поле 980416
-                if (paymentData.payment_id) {
-                    console.log(`Searching deal with payment_id ${paymentData.payment_id} in field 980726`);
-                    const deals = await this.kommoApi.searchDealsByCustomField(
-                        980726,
-                        paymentData.payment_id.toString()
-                    );
-
-                    if (deals.length > 0) {
-                        leadId = deals[0].id;
-                        console.log(`Found deal ${leadId} by payment_id ${paymentData.payment_id}`);
-                    }
-                }
-
-                // Если не нашли по payment_id, пробуем извлечь из order_id
-                if (!leadId && paymentData.order_id?.startsWith('deal_')) {
-                    leadId = parseInt(paymentData.order_id.split('_')[1]);
-                    console.log(`Extracted leadId ${leadId} from order_id`);
-                }
-
-                if (leadId) {
-                    const noteText = `Payment successful\n` +
-                        `Amount: ${paymentData.actual_amount / 100} ${paymentData.currency}\n` +
-                        `Transaction ID: ${paymentData.payment_id}\n` +
-                        `Card: ${paymentData.masked_card || 'N/A'}`;
-
-                    try {
-                        const noteResult = await this.kommoApi.createNote(leadId, noteText);
-                        console.log('Success note added to deal', leadId, 'Note ID:', noteResult.id);
-
-                        // Обновляем статус сделки на WON (ID 142)
-                        await this.kommoApi.updateLeadStatus(leadId, 'won');
-                    } catch (noteError) {
-                        console.error('Failed to process payment:', noteError);
-                        // Retry logic...
-                    }
-                } else {
-                    console.error('No leadId found for payment:', paymentData.payment_id);
-                }
+            // Validate payment data
+            if (!paymentData || !paymentData.payment_id) {
+                throw new Error('Invalid payment data - missing payment_id');
             }
-            return { success: true };
+
+            // Log all status fields for debugging
+            console.log('Payment status fields:', {
+                status: paymentData.status,
+                response_status: paymentData.response_status,
+                order_status: paymentData.order_status
+            });
+
+            // Process if any status field indicates success
+            const isSuccess = paymentData.response_status === 'success' ||
+                paymentData.order_status === 'approved' ||
+                paymentData.status === 'success';
+
+            if (!isSuccess) {
+                console.log('Payment not successful, status fields:', {
+                    status: paymentData.status,
+                    response_status: paymentData.response_status,
+                    order_status: paymentData.order_status
+                });
+                return {
+                    success: false,
+                    error: `Payment not successful. Status: ${paymentData.status || 'undefined'}, Response: ${paymentData.response_status || 'undefined'}, Order: ${paymentData.order_status || 'undefined'}`
+                };
+            }
+
+            let leadId = null;
+            const paymentId = paymentData.payment_id.toString();
+
+            // 1. Try to find deal by payment_id in custom field 980726
+            console.log(`Searching deal with payment_id ${paymentId} in field 980726`);
+            const deals = await this.kommoApi.searchDealsByCustomField(980726, paymentId);
+
+            if (deals.length > 0) {
+                leadId = deals[0].id;
+                console.log(`Found deal ${leadId} by payment_id ${paymentId}`);
+            }
+
+            // 2. Try to extract from order_id if not found
+            if (!leadId && paymentData.order_id?.startsWith('deal_')) {
+                leadId = parseInt(paymentData.order_id.split('_')[1]);
+                console.log(`Extracted leadId ${leadId} from order_id`);
+            }
+
+            if (!leadId) {
+                throw new Error(`No lead found for payment ${paymentId}`);
+            }
+
+            // Get full deal data
+            const leadData = await this.kommoApi.getLead(leadId);
+            console.log('Deal data before update:', JSON.stringify(leadData, null, 2));
+
+            // Create payment note
+            const noteText = `Payment successful\n` +
+                `Amount: ${paymentData.actual_amount / 100} ${paymentData.currency}\n` +
+                `Transaction ID: ${paymentId}\n` +
+                `Card: ${paymentData.masked_card || 'N/A'}\n` +
+                `Date: ${new Date().toISOString()}`;
+
+            const noteResult = await this.kommoApi.createNote(leadId, noteText);
+            console.log('Success note added to deal', leadId, 'Note ID:', noteResult.id);
+
+            // Update deal status to WON (142)
+            await this.kommoApi.updateLeadStatus(leadId, 'won');
+            console.log(`Deal ${leadId} status updated to WON`);
+
+            // Verify status update
+            const updatedLead = await this.kommoApi.getLead(leadId);
+            if (updatedLead.status_id !== 142) {
+                throw new Error(`Failed to update deal status to WON. Current status: ${updatedLead.status_id}`);
+            }
+
+            return {
+                success: true,
+                leadId,
+                paymentId,
+                amount: paymentData.actual_amount,
+                currency: paymentData.currency
+            };
         } catch (error) {
-            console.error('Payment callback processing error:', error);
+            console.error('==== PAYMENT PROCESSING ERROR ====');
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                paymentData: paymentData
+            });
+
             return {
                 success: false,
-                error: error.message
+                error: error.message,
+                paymentId: paymentData?.payment_id,
+                leadId: leadId || null
             };
         }
     }

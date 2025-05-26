@@ -199,20 +199,32 @@ app.post('/callback', async (req, res) => {
 app.post('/payment-callback', async (req, res) => {
     try {
         const callbackData = req.body;
-        console.log('Received payment callback:', callbackData);
+        console.log('==== PAYMENT CALLBACK RECEIVED ====');
+        console.log('Payment callback data:', callbackData);
 
-        // Verify callback signature if needed
-        // Process payment status update
-        // Example: update database with payment status
+        const handler = new (require('./kommo-webhook-handler'))();
+        const result = await handler.processPaymentCallback(callbackData);
 
-        res.status(200).json({ status: 'Callback processed' });
+        if (result.success) {
+            console.log('Payment processed successfully');
+            res.status(200).json({ status: 'success' });
+        } else {
+            console.error('Payment processing failed:', result.error);
+            res.status(400).json({
+                status: 'error',
+                error: result.error
+            });
+        }
     } catch (error) {
         console.error('Callback processing error:', {
             message: error.message,
             data: req.body,
             stack: error.stack
         });
-        res.status(500).json({ error: 'Callback processing failed' });
+        res.status(500).json({
+            error: 'Callback processing failed',
+            details: error.message
+        });
     }
 });
 

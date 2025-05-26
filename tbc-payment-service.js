@@ -135,8 +135,8 @@ class TbcPaymentService {
                 merchant_id: this.merchantId,
                 order_desc: params.description,
                 order_id: `deal_${Date.now()}`,
-                response_url: params.callback_url,
-                server_callback_url: params.callback_url,
+                response_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
+                server_callback_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
                 version: '1.0'
             }
         };
