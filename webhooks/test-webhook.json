@@ -1,0 +1,37 @@
+{
+    "leads": {
+        "add": [
+            {
+                "id": 12345,
+                "name": "Test Deal",
+                "price": 1000,
+                "custom_fields_values": [
+                    {
+                        "field_id": 888918,
+                        "values": [
+                            {
+                                "value": "500"
+                            }
+                        ]
+                    },
+                    {
+                        "field_id": 889650,
+                        "values": [
+                            {
+                                "value": "Test Company"
+                            }
+                        ]
+                    }
+                ],
+                "_embedded": {
+                    "companies": [
+                        {
+                            "id": 54321,
+                            "name": "Test Company"
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}

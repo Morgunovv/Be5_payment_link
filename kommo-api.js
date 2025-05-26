@@ -90,29 +90,30 @@ class KommoAPI {
      */
     async updateLeadCustomField(leadId, fieldId, value) {
         try {
-            // Получаем текущие данные сделки
+            // Get current lead data to check existing field properties
             const leadData = await this.getLead(leadId);
 
-            // Подготавливаем данные для обновления
-            const requestData = {
-                update: [{
-                    id: parseInt(leadId, 10),
-                    custom_fields_values: leadData.custom_fields_values || []
+            // Find existing field to get its properties
+            const existingField = leadData.custom_fields_values?.find(f => f.field_id === fieldId);
+
+            // Prepare the field update data
+            const fieldUpdate = {
+                field_id: fieldId,
+                field_name: existingField?.field_name || '',
+                field_code: existingField?.field_code || null,
+                field_type: existingField?.field_type || 'text',
+                values: [{
+                    value: String(value)
                 }]
             };
 
-            // Находим или создаем поле для обновления
-            let field = requestData.update[0].custom_fields_values.find(f => f.field_id === fieldId);
-            if (!field) {
-                field = {
-                    field_id: fieldId,
-                    values: []
-                };
-                requestData.update[0].custom_fields_values.push(field);
-            }
-
-            // Обновляем значение поля (конвертируем в число для цифрового поля)
-            field.values = [{ value: Number(value) }];
+            // Prepare the full request data
+            const requestData = {
+                update: [{
+                    id: parseInt(leadId, 10),
+                    custom_fields_values: [fieldUpdate]
+                }]
+            };
 
             console.log('Updating custom field:', {
                 url: `${this.baseUrl}/leads`,
