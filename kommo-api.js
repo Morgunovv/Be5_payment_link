@@ -160,22 +160,56 @@ class KommoAPI {
     }
 
     async searchDealsByCustomField(fieldId, value) {
-        try {
-            const response = await axios.get(
-                `${this.baseUrl}/leads`,
-                {
-                    headers: this.getHeaders(),
-                    params: {
-                        'filter[custom_fields_values][field_id]': fieldId,
-                        'filter[custom_fields_values][values][0][value]': value
-                    }
-                }
-            );
-            return response.data._embedded?.leads || [];
-        } catch (error) {
-            console.error(`Error searching deals by field ${fieldId}:`, error.message);
-            throw error;
+        if (!this.token) {
+            throw new Error('KOMMO_API_TOKEN is not set');
         }
+
+        const params = {
+            'filter[custom_fields_values][field_id]': fieldId,
+            'filter[custom_fields_values][values][0][value]': value
+        };
+
+        console.log('Searching deals with params:', JSON.stringify(params, null, 2));
+
+        let retries = 3;
+        let lastError = null;
+
+        while (retries > 0) {
+            try {
+                const response = await axios.get(
+                    `${this.baseUrl}/leads`,
+                    {
+                        headers: this.getHeaders(),
+                        params: params,
+                        timeout: 10000
+                    }
+                );
+
+                if (!response.data._embedded?.leads) {
+                    console.log('No leads found in response');
+                    return [];
+                }
+
+                console.log(`Found ${response.data._embedded.leads.length} deals`);
+                return response.data._embedded.leads;
+
+            } catch (error) {
+                lastError = error;
+                retries--;
+                console.error(`Error searching deals (${retries} retries left):`, error.message);
+
+                if (error.response) {
+                    console.error('Response status:', error.response.status);
+                    console.error('Response data:', error.response.data);
+                }
+
+                if (retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+        }
+
+        throw lastError || new Error('Failed to search deals after retries');
     }
 
     async updateLeadStatus(leadId, status) {

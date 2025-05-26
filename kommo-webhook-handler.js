@@ -123,7 +123,7 @@ class KommoWebhookHandler {
                 amount: totalAmount,
                 description: `Payment for ${companyName} (deal #${leadId})`,
                 callback_url: `${process.env.BASE_URL}/payment-callback`,
-                order_id: `deal_${leadId}` // Используем реальный ID сделки вместо timestamp
+                order_id: `deal_${leadId}_${Math.random().toString(36).substring(2, 4).toUpperCase()}` // Используем ID сделки + 2 случайные буквы
             };
 
             console.log('Creating payment link with request:', JSON.stringify(paymentRequest, null, 2));
@@ -318,18 +318,11 @@ class KommoWebhookHandler {
 
         try {
             // Validate payment data
-            if (!paymentData || !paymentData.payment_id) {
-                throw new Error('Invalid payment data - missing payment_id');
+            if (!paymentData || !paymentData.payment_id || !paymentData.order_id) {
+                throw new Error('Invalid payment data - missing payment_id or order_id');
             }
 
-            // Log all status fields for debugging
-            console.log('Payment status fields:', {
-                status: paymentData.status,
-                response_status: paymentData.response_status,
-                order_status: paymentData.order_status
-            });
-
-            // Process if any status field indicates success
+            // Check if payment is successful
             const isSuccess = paymentData.response_status === 'success' ||
                 paymentData.order_status === 'approved' ||
                 paymentData.status === 'success';
@@ -346,50 +339,34 @@ class KommoWebhookHandler {
                 };
             }
 
-            let leadId = null;
+            // Extract leadId from order_id (format: deal_12345_AB)
+            const parts = paymentData.order_id.split('_');
+            if (parts.length < 2) {
+                throw new Error(`Invalid order_id format: ${paymentData.order_id}`);
+            }
+            const leadId = parseInt(parts[1]);
             const paymentId = paymentData.payment_id.toString();
 
-            // 1. Try to find deal by payment_id in custom field 980726
-            console.log(`Searching deal with payment_id ${paymentId} in field 980726`);
-            const deals = await this.kommoApi.searchDealsByCustomField(980726, paymentId);
+            // Save to PostgreSQL
+            const { sequelize, PaymentDealRelation } = require('./models');
 
-            if (deals.length > 0) {
-                leadId = deals[0].id;
-                console.log(`Found deal ${leadId} by payment_id ${paymentId}`);
-            }
+            try {
+                // Verify database connection
+                await sequelize.authenticate();
+                console.log('Database connection established successfully');
 
-            // 2. Try to extract from order_id if not found
-            if (!leadId && paymentData.order_id?.startsWith('deal_')) {
-                leadId = parseInt(paymentData.order_id.split('_')[1]);
-                console.log(`Extracted leadId ${leadId} from order_id`);
-            }
+                // Create transaction for data consistency
+                const result = await sequelize.transaction(async (t) => {
+                    return await PaymentDealRelation.create({
+                        payment_id: paymentId,
+                        deal_id: leadId
+                    }, { transaction: t });
+                });
 
-            if (!leadId) {
-                throw new Error(`No lead found for payment ${paymentId}`);
-            }
-
-            // Get full deal data
-            const leadData = await this.kommoApi.getLead(leadId);
-            console.log('Deal data before update:', JSON.stringify(leadData, null, 2));
-
-            // Create payment note
-            const noteText = `Payment successful\n` +
-                `Amount: ${paymentData.actual_amount / 100} ${paymentData.currency}\n` +
-                `Transaction ID: ${paymentId}\n` +
-                `Card: ${paymentData.masked_card || 'N/A'}\n` +
-                `Date: ${new Date().toISOString()}`;
-
-            const noteResult = await this.kommoApi.createNote(leadId, noteText);
-            console.log('Success note added to deal', leadId, 'Note ID:', noteResult.id);
-
-            // Update deal status to WON (142)
-            await this.kommoApi.updateLeadStatus(leadId, 'won');
-            console.log(`Deal ${leadId} status updated to WON`);
-
-            // Verify status update
-            const updatedLead = await this.kommoApi.getLead(leadId);
-            if (updatedLead.status_id !== 142) {
-                throw new Error(`Failed to update deal status to WON. Current status: ${updatedLead.status_id}`);
+                console.log('Payment saved to database:', result.toJSON());
+            } catch (dbError) {
+                console.error('Database operation failed:', dbError);
+                throw new Error(`Failed to save payment to database: ${dbError.message}`);
             }
 
             return {

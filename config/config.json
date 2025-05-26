@@ -1,0 +1,26 @@
+{
+  "development": {
+    "username": "postgres",
+    "password": "dsjVErAhgfGUQvXQyMbHDjmUtXJTGViQ",
+    "database": "railway",
+    "host": "maglev.proxy.rlwy.net",
+    "port": "48985",
+    "dialect": "postgres"
+  },
+  "test": {
+    "username": "postgres",
+    "password": "dsjVErAhgfGUQvXQyMbHDjmUtXJTGViQ",
+    "database": "railway",
+    "host": "maglev.proxy.rlwy.net",
+    "port": "48985",
+    "dialect": "postgres"
+  },
+  "production": {
+    "username": "postgres",
+    "password": "dsjVErAhgfGUQvXQyMbHDjmUtXJTGViQ",
+    "database": "railway",
+    "host": "maglev.proxy.rlwy.net",
+    "port": "48985",
+    "dialect": "postgres"
+  }
+}

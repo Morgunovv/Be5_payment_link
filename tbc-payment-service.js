@@ -134,7 +134,7 @@ class TbcPaymentService {
                 currency: 'GEL',
                 merchant_id: this.merchantId,
                 order_desc: params.description,
-                order_id: `deal_${Date.now()}`,
+                order_id: params.order_id || `deal_${params.deal_id || Date.now()}`,
                 response_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
                 server_callback_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
                 version: '1.0'

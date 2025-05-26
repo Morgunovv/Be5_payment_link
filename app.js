@@ -15,32 +15,82 @@ console.log('Environment Variables:', {
 });
 const PORT = process.env.PORT || 3000;
 
-// Middleware for parsing JSON and form data
+// Enhanced JSON parsing middleware with detailed logging
 app.use(express.json({
     verify: (req, res, buf) => {
+        const rawBody = buf.toString();
+        console.log('Raw JSON body:', rawBody);
+
         try {
-            JSON.parse(buf.toString());
+            const parsed = JSON.parse(rawBody);
+            console.log('Parsed JSON:', parsed);
+            req.rawBody = rawBody; // Save raw body for debugging
+            return true;
         } catch (e) {
-            throw new Error('Invalid JSON');
+            console.error('JSON parsing error:', {
+                error: e.message,
+                stack: e.stack,
+                rawBody: rawBody
+            });
+            throw new Error('Invalid JSON payload');
         }
-    }
+    },
+    limit: '10mb'
 }));
 
-// Add form-urlencoded parsing with extended options
+// Enhanced form-urlencoded parsing with detailed logging
 app.use(express.urlencoded({
     extended: true,
     limit: '10mb',
     verify: (req, res, buf) => {
-        req.rawBody = buf.toString();
+        const rawBody = buf.toString();
+        console.log('Raw form-urlencoded body:', rawBody);
+        req.rawBody = rawBody;
+
+        try {
+            // Try to parse as JSON if content looks like JSON
+            if (rawBody.trim().startsWith('{') || rawBody.trim().startsWith('[')) {
+                const parsed = JSON.parse(rawBody);
+                console.log('Parsed as JSON:', parsed);
+                req.body = parsed;
+            }
+        } catch (e) {
+            console.log('Body is not JSON, parsing as form-urlencoded');
+        }
     }
 }));
 
-// Error handling middleware
+// Enhanced error handling middleware
 app.use((err, req, res, next) => {
-    if (err.message === 'Invalid JSON') {
-        return res.status(400).json({ error: 'Invalid JSON payload' });
+    console.error('Error middleware caught:', {
+        message: err.message,
+        stack: err.stack,
+        url: req.originalUrl,
+        method: req.method,
+        body: req.body,
+        rawBody: req.rawBody
+    });
+
+    if (err.message === 'Invalid JSON payload') {
+        return res.status(400).json({
+            status: 'error',
+            error: 'Invalid JSON payload',
+            details: process.env.NODE_ENV === 'development' ? {
+                message: err.message,
+                rawBody: req.rawBody
+            } : null
+        });
     }
-    next(err);
+
+    // Handle other errors
+    res.status(500).json({
+        status: 'error',
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? {
+            message: err.message,
+            stack: err.stack
+        } : null
+    });
 });
 
 // Serve static files from public directory
