@@ -16,7 +16,7 @@ document.getElementById('paymentForm').addEventListener('submit', async (event) 
     // Prepare payment data according to TBC API requirements
     const paymentData = {
         amount: amount,
-        currency: 'GEL',
+        currency: 'USD',
         description: description,
         // Add other required fields here as per TBC API docs
     };
