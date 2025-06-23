@@ -128,9 +128,16 @@ class TbcPaymentService {
     }
 
     async createPaymentLink(params) {
+        // Calculate amount using formula: (Sale + 985221 + (888918 * 985181) * 1.18)
+        const amount = (
+            parseFloat(params.Sale || 0) +
+            parseFloat(params['985221'] || 0) +
+            (parseFloat(params['888918'] || 0) * parseFloat(params['985181'] || 0)) * 1.18
+        ).toFixed(2);
+
         const paymentData = {
             request: {
-                amount: params.amount,
+                amount: amount,
                 currency: 'GEL',
                 merchant_id: this.merchantId,
                 order_desc: params.description,
