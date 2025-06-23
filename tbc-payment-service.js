@@ -149,10 +149,14 @@ class TbcPaymentService {
         };
 
         const result = await this.createPayment(paymentData);
-        return {
-            checkout_url: result.response.checkout_url,
-            payment_id: result.response.payment_id
-        };
+        console.log('Payment creation result:', result);
+        if (result && result.response) {
+            return {
+                checkout_url: result.response.checkout_url,
+                payment_id: result.response.payment_id
+            };
+        }
+        throw new Error('Failed to create payment: invalid response from TBC API');
     }
 }
 
