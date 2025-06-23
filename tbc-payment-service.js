@@ -64,10 +64,8 @@ class TbcPaymentService {
                 { headers: this.getApiHeaders() }
             );
 
-            console.log('Full TBC API response:', {
+            console.log('TBC API response:', {
                 status: response.status,
-                headers: response.headers,
-                config: response.config,
                 data: response.data
             });
             return response.data;
@@ -130,25 +128,9 @@ class TbcPaymentService {
     }
 
     async createPaymentLink(params) {
-        // Calculate amount using formula: (price + 985221 + (888918 * 985181) * 1.18)
-        const price = parseFloat(params.price || 0);
-        const field985221 = parseFloat(params['985221'] || 0);
-        const field888918 = parseFloat(params['888918'] || 0);
-        const field985181 = parseFloat(params['985181'] || 0);
-
-        const amount = (price + field985221 + (field888918 * field985181) * 1.18).toFixed(2);
-
-        console.log('Calculated payment amount:', {
-            price,
-            field985221,
-            field888918,
-            field985181,
-            amount
-        });
-
         const paymentData = {
             request: {
-                amount: amount,
+                amount: params.amount,
                 currency: 'GEL',
                 merchant_id: this.merchantId,
                 order_desc: params.description,
@@ -160,14 +142,10 @@ class TbcPaymentService {
         };
 
         const result = await this.createPayment(paymentData);
-        console.log('Payment creation result:', result);
-        if (result && result.response) {
-            return {
-                checkout_url: result.response.checkout_url,
-                payment_id: result.response.payment_id
-            };
-        }
-        throw new Error('Failed to create payment: invalid response from TBC API');
+        return {
+            checkout_url: result.response.checkout_url,
+            payment_id: result.response.payment_id
+        };
     }
 }
 
