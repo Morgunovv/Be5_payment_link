@@ -64,8 +64,10 @@ class TbcPaymentService {
                 { headers: this.getApiHeaders() }
             );
 
-            console.log('TBC API response:', {
+            console.log('Full TBC API response:', {
                 status: response.status,
+                headers: response.headers,
+                config: response.config,
                 data: response.data
             });
             return response.data;
