@@ -129,11 +129,20 @@ class TbcPaymentService {
 
     async createPaymentLink(params) {
         // Calculate amount using formula: (price + 985221 + (888918 * 985181) * 1.18)
-        const amount = (
-            parseFloat(params.price || 0) +
-            parseFloat(params['985221'] || 0) +
-            (parseFloat(params['888918'] || 0) * parseFloat(params['985181'] || 0)) * 1.18
-        ).toFixed(2);
+        const price = parseFloat(params.price || 0);
+        const field985221 = parseFloat(params['985221'] || 0);
+        const field888918 = parseFloat(params['888918'] || 0);
+        const field985181 = parseFloat(params['985181'] || 0);
+
+        const amount = (price + field985221 + (field888918 * field985181) * 1.18).toFixed(2);
+
+        console.log('Calculated payment amount:', {
+            price,
+            field985221,
+            field888918,
+            field985181,
+            amount
+        });
 
         const paymentData = {
             request: {
