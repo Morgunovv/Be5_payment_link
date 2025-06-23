@@ -131,7 +131,7 @@ class TbcPaymentService {
         const paymentData = {
             request: {
                 amount: params.amount,
-                currency: 'GEL',
+                currency: 'USD',
                 merchant_id: this.merchantId,
                 order_desc: params.description,
                 order_id: params.order_id || `deal_${params.deal_id || Date.now()}`,
