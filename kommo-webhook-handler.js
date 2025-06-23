@@ -100,10 +100,24 @@ class KommoWebhookHandler {
                 console.log('Found embedded companies in lead data');
             }
 
-            // Извлекаем суммы из полей (умножаем на 100 для перевода в копейки/центы)
-            const salesValue = Math.round(parseFloat(leadData.price || 0) * 100);
-            const customFieldValue = Math.round(parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 888918)?.values[0]?.value || 0) * 100);
-            const totalAmount = salesValue + customFieldValue;
+            // Извлекаем значения полей для расчета суммы
+            const price = parseFloat(leadData.price || 0);
+            const field888918 = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 888918)?.values[0]?.value || 0);
+            const field985221 = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 985221)?.values[0]?.value || 0);
+            const field985181 = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 985181)?.values[0]?.value || 0);
+
+            // Рассчитываем сумму по формуле: (price + 985221 + (888918 * 985181) * 1.18)
+            const calculatedAmount = price + field985221 + (field888918 * field985181) * 1.18;
+            const totalAmount = Math.round(calculatedAmount * 100); // Переводим в копейки/центы
+
+            console.log('Payment calculation details:', {
+                price,
+                field888918,
+                field985221,
+                field985181,
+                calculatedAmount,
+                totalAmount
+            });
 
             // Получаем название компании
             let companyName = 'Company';
