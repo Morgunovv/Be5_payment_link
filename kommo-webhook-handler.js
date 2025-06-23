@@ -106,8 +106,8 @@ class KommoWebhookHandler {
             const field985221 = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 985221)?.values[0]?.value || 0);
             const field985181 = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 985181)?.values[0]?.value || 0);
 
-            // Рассчитываем сумму по формуле: (price + 985221 + (888918 * 985181) * 1.18)
-            const calculatedAmount = price + field985221 + (field888918 * field985181) * 1.18;
+            // Рассчитываем сумму по формуле: (price + 985221 + (888918 * 985181)) * 1.18
+            const calculatedAmount = (price + field985221 + (field888918 * field985181)) * 1.18;
             const totalAmount = Math.round(calculatedAmount * 100); // Переводим в копейки/центы
 
             console.log('Payment calculation details:', {
