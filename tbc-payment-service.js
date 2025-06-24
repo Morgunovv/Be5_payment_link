@@ -1,6 +1,5 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const currencyService = require('./services/currency-service');
 
 class TbcPaymentService {
     constructor() {
@@ -15,6 +14,9 @@ class TbcPaymentService {
 
     async createPayment(paymentData) {
         try {
+            // Generate signature
+            // Prepare parameters for signature
+            // Include all request parameters in signature
             const params = {
                 amount: paymentData.request.amount,
                 currency: paymentData.request.currency,
@@ -26,22 +28,35 @@ class TbcPaymentService {
                 version: paymentData.request.version
             };
 
+            // Sort parameters alphabetically by key and filter out empty values
             const sortedKeys = Object.keys(params).sort();
             const sortedValues = sortedKeys
-                .map(key => String(params[key]))
+                .map(key => String(params[key])) // Convert all values to strings
                 .filter(value => value !== '' && value !== 'null' && value !== 'undefined');
 
+            // Join with | and put secret key first
             const signatureString = [
                 process.env.TBC_MERCHANT_SECRET,
                 ...sortedValues
             ].join('|');
 
-            const signature = crypto.createHash('sha1')
-                .update(signatureString, 'utf8')
-                .digest('hex')
-                .toLowerCase();
+            console.log('Signature string:', signatureString);
 
+            const signature = crypto.createHash('sha1')
+                .update(signatureString, 'utf8') // Explicit utf8 encoding
+                .digest('hex')
+                .toLowerCase(); // Ensure lowercase
+
+            console.log('Generated signature:', signature);
+
+            // Add signature to request
             paymentData.request.signature = signature;
+
+            console.log('Sending request to TBC API:', {
+                url: `${this.apiBaseUrl}/checkout/url`,
+                data: paymentData,
+                headers: this.getApiHeaders()
+            });
 
             const response = await axios.post(
                 `${this.apiBaseUrl}/checkout/url`,
@@ -49,6 +64,10 @@ class TbcPaymentService {
                 { headers: this.getApiHeaders() }
             );
 
+            console.log('TBC API response:', {
+                status: response.status,
+                data: response.data
+            });
             return response.data;
         } catch (error) {
             console.error('Payment creation error:', error.response?.data || error.message);
@@ -56,42 +75,6 @@ class TbcPaymentService {
         }
     }
 
-    async createPaymentLink(params) {
-        try {
-            // params.amount содержит финальную сумму в USD после расчетов с Kommo
-            const rate = await currencyService.getGelToUsdRate();
-            const amountInGel = Math.round(params.amount * rate * 100) / 100;
-
-            const paymentData = {
-                request: {
-                    amount: amountInGel,
-                    currency: 'GEL',
-                    merchant_id: this.merchantId,
-                    order_desc: params.description,
-                    order_id: params.order_id || `deal_${params.deal_id || Date.now()}`,
-                    response_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
-                    server_callback_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
-                    version: '1.0',
-                    additional_info: JSON.stringify({
-                        original_amount: params.amount,
-                        original_currency: 'USD',
-                        exchange_rate: rate
-                    })
-                }
-            };
-
-            const result = await this.createPayment(paymentData);
-            return {
-                checkout_url: result.response.checkout_url,
-                payment_id: result.response.payment_id
-            };
-        } catch (error) {
-            console.error('Error creating payment link:', error.message);
-            throw new Error('Failed to create payment link: ' + error.message);
-        }
-    }
-
-    // Остальные методы остаются без изменений
     async createInvoice(invoiceData) {
         try {
             const response = await axios.post(
@@ -142,6 +125,43 @@ class TbcPaymentService {
 
     generatePaymentLink(paymentId) {
         return `https://pay.flitt.com/pay/${paymentId}`;
+    }
+
+    async createPaymentLink(params) {
+        const currencyService = require('./services/currency-service');
+
+        try {
+            // Конвертируем USD в GEL
+            const rate = await currencyService.getGelToUsdRate();
+            const amountInGel = Math.round(params.amount * rate * 100) / 100; // Округляем до 2 знаков
+
+            const paymentData = {
+                request: {
+                    amount: amountInGel,
+                    currency: 'GEL',
+                    merchant_id: this.merchantId,
+                    order_desc: params.description,
+                    order_id: params.order_id || `deal_${params.deal_id || Date.now()}`,
+                    response_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
+                    server_callback_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
+                    version: '1.0',
+                    additional_info: JSON.stringify({
+                        original_amount: params.amount,
+                        original_currency: 'USD',
+                        exchange_rate: rate
+                    })
+                }
+            };
+
+            const result = await this.createPayment(paymentData);
+            return {
+                checkout_url: result.response.checkout_url,
+                payment_id: result.response.payment_id
+            };
+        } catch (error) {
+            console.error('Error creating payment link:', error.message);
+            throw new Error('Failed to convert currency and create payment link');
+        }
     }
 }
 
