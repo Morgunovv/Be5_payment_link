@@ -128,40 +128,24 @@ class TbcPaymentService {
     }
 
     async createPaymentLink(params) {
-        const currencyService = require('./services/currency-service');
+        const paymentData = {
+            request: {
+                amount: params.amount,
+                currency: 'GEL',
+                merchant_id: this.merchantId,
+                order_desc: params.description,
+                order_id: params.order_id || `deal_${params.deal_id || Date.now()}`,
+                response_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
+                server_callback_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
+                version: '1.0'
+            }
+        };
 
-        try {
-            // Конвертируем USD в GEL
-            const rate = await currencyService.getGelToUsdRate();
-            const amountInGel = Math.round(params.amount * rate * 100) / 100; // Округляем до 2 знаков
-
-            const paymentData = {
-                request: {
-                    amount: amountInGel,
-                    currency: 'GEL',
-                    merchant_id: this.merchantId,
-                    order_desc: params.description,
-                    order_id: params.order_id || `deal_${params.deal_id || Date.now()}`,
-                    response_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
-                    server_callback_url: "https://be5paymentlink-production.up.railway.app/payment-callback",
-                    version: '1.0',
-                    additional_info: JSON.stringify({
-                        original_amount: params.amount,
-                        original_currency: 'USD',
-                        exchange_rate: rate
-                    })
-                }
-            };
-
-            const result = await this.createPayment(paymentData);
-            return {
-                checkout_url: result.response.checkout_url,
-                payment_id: result.response.payment_id
-            };
-        } catch (error) {
-            console.error('Error creating payment link:', error.message);
-            throw new Error('Failed to convert currency and create payment link');
-        }
+        const result = await this.createPayment(paymentData);
+        return {
+            checkout_url: result.response.checkout_url,
+            payment_id: result.response.payment_id
+        };
     }
 }
 
