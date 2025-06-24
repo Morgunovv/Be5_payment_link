@@ -106,15 +106,22 @@ class KommoWebhookHandler {
             const field985221 = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 985221)?.values[0]?.value || 0);
             const field985181 = parseFloat(leadData.custom_fields_values?.find(f => f.field_id === 985181)?.values[0]?.value || 0);
 
-            // Рассчитываем сумму по формуле: (price + 985221 + (888918 * 985181)) * 1.18
-            const calculatedAmount = (price + field985221 + (field888918 * field985181)) * 1.18;
-            const totalAmount = Math.round(calculatedAmount * 100); // Переводим в копейки/центы
+            // Рассчитываем сумму в USD по формуле: (price + 985221 + (888918 * 985181)) * 1.18
+            const amountInUsd = (price + field985221 + (field888918 * field985181)) * 1.18;
+
+            // Конвертируем в GEL
+            const currencyService = require('./services/currency-service');
+            const gelRate = await currencyService.getGelToUsdRate();
+            const calculatedAmount = amountInUsd * gelRate;
+            const totalAmount = Math.round(calculatedAmount * 100); // Переводим в тетри
 
             console.log('Payment calculation details:', {
                 price,
                 field888918,
                 field985221,
                 field985181,
+                amountInUsd,
+                gelRate,
                 calculatedAmount,
                 totalAmount
             });
@@ -179,7 +186,10 @@ class KommoWebhookHandler {
             // Создаем платежную ссылку с полным логированием
             const paymentRequest = {
                 amount: totalAmount,
-                description: `Payment for ${companyName} (deal #${leadId})`,
+                description: `Payment for ${companyName} (deal #${leadId}) [${amountInUsd.toFixed(2)} USD]`,
+                original_amount: amountInUsd,
+                original_currency: 'USD',
+                exchange_rate: gelRate,
                 callback_url: `${process.env.BASE_URL}/payment-callback`,
                 order_id: `deal_${leadId}_${Math.random().toString(36).substring(2, 4).toUpperCase()}` // Используем ID сделки + 2 случайные буквы
             };
